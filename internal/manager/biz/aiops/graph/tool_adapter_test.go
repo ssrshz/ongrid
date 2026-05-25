@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -243,6 +244,35 @@ func TestEinoToolAdapter_DoesNotMemoizeErrors(t *testing.T) {
 	_, _ = a.InvokableRun(ctx, `{"q":"a"}`)
 	if got := inner.calls.Load(); got != 2 {
 		t.Errorf("errored read calls must stay retryable; want 2 executions, got %d", got)
+	}
+}
+
+// After maxToolCallsPerRun distinct executions, the tool stops running and
+// returns a "synthesize now" directive (catches the varying-args repeat loop
+// the memo can't).
+func TestEinoToolAdapter_PerToolCallCap(t *testing.T) {
+	t.Parallel()
+	inner := &fakeBaseTool{name: "query_promql", class: "read", runResp: `{"v":1}`}
+	a := &einoToolAdapter{inner: inner, memo: newToolMemo()}
+	ctx := context.Background()
+	// Distinct args each time so the identical-call memo doesn't short-circuit;
+	// the cap counts executions.
+	for i := 0; i < maxToolCallsPerRun; i++ {
+		out, _ := a.InvokableRun(ctx, fmt.Sprintf(`{"q":"m%d"}`, i))
+		if strings.Contains(out, "call_budget_exceeded") {
+			t.Fatalf("call %d should execute, got budget directive: %s", i, out)
+		}
+	}
+	if got := inner.calls.Load(); got != int32(maxToolCallsPerRun) {
+		t.Fatalf("expected %d executions, got %d", maxToolCallsPerRun, got)
+	}
+	// One past the cap → directive, no execution.
+	out, _ := a.InvokableRun(ctx, `{"q":"over"}`)
+	if !strings.Contains(out, "call_budget_exceeded") {
+		t.Errorf("past the cap should return the budget directive, got %q", out)
+	}
+	if got := inner.calls.Load(); got != int32(maxToolCallsPerRun) {
+		t.Errorf("over-cap call must NOT execute; still want %d, got %d", maxToolCallsPerRun, got)
 	}
 }
 

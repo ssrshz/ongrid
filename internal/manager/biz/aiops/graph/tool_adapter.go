@@ -24,11 +24,14 @@ import (
 // Class=="read" tools are memoized — write/destructive tools never touch
 // this path, so the review/mutation flow is unaffected.
 type toolMemo struct {
-	mu sync.Mutex
-	m  map[string]string
+	mu     sync.Mutex
+	m      map[string]string // (tool\x00args) -> result, identical-call cache
+	counts map[string]int    // tool name -> distinct executions this run
 }
 
-func newToolMemo() *toolMemo { return &toolMemo{m: make(map[string]string)} }
+func newToolMemo() *toolMemo {
+	return &toolMemo{m: make(map[string]string), counts: make(map[string]int)}
+}
 
 func (t *toolMemo) get(k string) (string, bool) {
 	t.mu.Lock()
@@ -41,6 +44,43 @@ func (t *toolMemo) put(k, v string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.m[k] = v
+}
+
+// count returns how many real executions of the named tool have happened
+// this run; bump records one more.
+func (t *toolMemo) count(name string) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.counts[name]
+}
+
+func (t *toolMemo) bump(name string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.counts[name]++
+}
+
+// maxToolCallsPerRun caps how many times any one tool may EXECUTE within a
+// single agent run. Identical-arg repeats are served from the memo and don't
+// count; this catches the other failure mode — the model calling the same
+// tool many times with slightly different args (e.g. query_promql across a
+// dozen metrics, query_alert_rules over and over) without converging. Past
+// the cap the tool returns a "synthesize now" directive instead of running,
+// which forces the agent to answer from what it already gathered. Generous
+// enough that normal multi-step investigation isn't clipped.
+const maxToolCallsPerRun = 8
+
+// toolBudgetExceeded is the synthetic tool result returned once a tool hits
+// maxToolCallsPerRun. Shaped like a normal JSON tool result so the LLM reads
+// it as data and (re)directs to answering.
+func toolBudgetExceeded(name string, n int) string {
+	b, _ := json.Marshal(map[string]any{
+		"status": "call_budget_exceeded",
+		"tool":   name,
+		"calls":  n,
+		"instruction": fmt.Sprintf("You have already called %q %d times this turn — that is the per-tool limit. Do NOT call it again. Answer the user from the results you already gathered; if they're insufficient, state specifically what is missing and ask the user.", name, n),
+	})
+	return string(b)
 }
 
 // WrapBaseTool adapts an ongrid basetool.BaseTool to eino's
@@ -184,21 +224,33 @@ func (a *einoToolAdapter) InvokableRun(ctx context.Context, argumentsInJSON stri
 	if a == nil || a.inner == nil {
 		return "", fmt.Errorf("graph: tool adapter has nil inner tool")
 	}
-	// Per-run memoization of identical read-tool calls. Key on exact args;
-	// a hit returns the prior result without re-executing. Only read tools
-	// (resolved below) are eligible.
 	var memoKey string
 	if a.memo != nil {
 		a.resolveInfo(ctx)
+		// 1. Identical-call memo (read tools only): a byte-identical repeat
+		//    returns the prior result without re-executing.
 		if a.cacheable && a.cacheName != "" {
 			memoKey = a.cacheName + "\x00" + argumentsInJSON
 			if cached, ok := a.memo.get(memoKey); ok {
 				return cached, nil
 			}
 		}
+		// 2. Per-tool execution cap (all tools): once a tool has run
+		//    maxToolCallsPerRun times this run, stop executing it and hand
+		//    back a "synthesize now" directive. Catches the distinct-args
+		//    repeat loop (query_promql/query_alert_rules called over and over)
+		//    that the memo can't.
+		if a.cacheName != "" && a.memo.count(a.cacheName) >= maxToolCallsPerRun {
+			return toolBudgetExceeded(a.cacheName, a.memo.count(a.cacheName)), nil
+		}
 	}
 	resolved := einotool.GetImplSpecificOptions(&einoInvokeOptKey{}, opts...)
 	out, err := a.inner.InvokableRun(ctx, argumentsInJSON, resolved.opts...)
+	// Count this real execution toward the per-tool cap (success or failure;
+	// a failing tool that's hammered is also waste the cap should bound).
+	if a.memo != nil && a.cacheName != "" {
+		a.memo.bump(a.cacheName)
+	}
 	if err != nil {
 		// Re-shape as a tool-result-style JSON so the LLM gets it as a
 		// message instead of having the graph terminate. Truncate long

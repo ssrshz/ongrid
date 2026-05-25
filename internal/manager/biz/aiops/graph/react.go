@@ -260,9 +260,9 @@ func assembleMessages(in *Input) ([]*schema.Message, error) {
 func languageDirective(locale string) string {
 	switch locale {
 	case "en-US":
-		return "Respond in English: all of your prose, explanations, and the narration around every tool call must be in English — even when tool outputs, logs, or knowledge-base snippets are in another language."
+		return "Respond in English. Everything you write to the user — prose, explanations, headings, and the narration around every tool call — must be in English. Tool descriptions, knowledge-base snippets, persona text, and logs may be in Chinese; render their MEANING in English and never echo raw Chinese to the user. Translate domain terms to their English equivalents (e.g. \"0号病人\" → \"patient zero\", \"根因\" → \"root cause\", \"告警\" → \"alert\", \"巡检\" → \"inspection\"). Leave only proper nouns, identifiers, hostnames, file paths, code, and raw command output verbatim."
 	case "zh-CN":
-		return "用中文回复：你的所有叙述、解释，以及每次工具调用前后的说明都必须用中文——即便工具输出、日志或知识库片段是其他语言。"
+		return "用中文回复：你的所有叙述、解释、标题，以及每次工具调用前后的说明都必须用中文。工具描述、知识库片段、日志可能是英文，把含义用中文表达即可；标识符、主机名、文件路径、代码、命令原始输出保持原样。"
 	}
 	return ""
 }

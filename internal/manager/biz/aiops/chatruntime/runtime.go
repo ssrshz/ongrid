@@ -591,6 +591,19 @@ func (rt *Runtime) Handle(ctx context.Context, req *Request) (*Reply, error) {
 	// 10. Invoke. The graph's outer Output carries the assistant
 	//     message + usage; the persistence callback already wrote the
 	//     assistant + tool rows by the time Invoke returns.
+	//
+	//     Per-request model selection (SPA model picker): thread
+	//     req.Provider/req.Model into the ChatModel node as eino model
+	//     options. RoutingChatModel.pick consumes WithProvider; the inner
+	//     clientChatModel honours WithModel. Without this the graph kernel
+	//     silently ignored the picker and always used the routing default
+	//     — so a user who chose e.g. claude-opus still got the default
+	//     model. When both are empty no option is added (default path
+	//     unchanged).
+	invokeOpts := []compose.Option{compose.WithCallbacks(handlers...)}
+	if mopts := chatModelOpts(req); len(mopts) > 0 {
+		invokeOpts = append(invokeOpts, compose.WithChatModelOption(mopts...))
+	}
 	out, invokeErr := g.Invoke(ctx, &graph.Input{
 		SystemPrompt:     systemPrompt,
 		History:          einoHistory,
@@ -600,7 +613,7 @@ func (rt *Runtime) Handle(ctx context.Context, req *Request) (*Reply, error) {
 		AgentReminder:    agentReminder,
 		DynamicHints:     dynamicHints,
 		Locale:           req.Locale,
-	}, compose.WithCallbacks(handlers...))
+	}, invokeOpts...)
 	if invokeErr != nil {
 		// Soft-fail graph-level errors: write an apology assistant
 		// message, emit it like a normal turn, and emit Done. Keeps
@@ -806,6 +819,25 @@ func buildEinoHistory(rows []*aiopsmodel.Message) []*schema.Message {
 		}
 	}
 	return out
+}
+
+// chatModelOpts turns the per-request model selection (SPA picker) into eino
+// model options for the graph's ChatModel node. Empty fields add no option,
+// so the routing default applies (unchanged default path). Provider routes
+// via RoutingChatModel.pick (WithProvider); model name is honoured by the
+// inner clientChatModel (WithModel).
+func chatModelOpts(req *Request) []model.Option {
+	if req == nil {
+		return nil
+	}
+	var opts []model.Option
+	if p := strings.TrimSpace(req.Provider); p != "" {
+		opts = append(opts, llm.WithProvider(p))
+	}
+	if m := strings.TrimSpace(req.Model); m != "" {
+		opts = append(opts, model.WithModel(m))
+	}
+	return opts
 }
 
 // calcDynamicHints produces the per-turn hint bullets that get injected
