@@ -415,13 +415,23 @@ func (e *PipelineEvaluator) notify(ctx context.Context, res *FiringResult, summa
 	// own hook.
 }
 
+// nonIdentityLabels are provenance/collector labels that must NOT split an
+// alert's identity. The same subject (e.g. a host's disk) can be reported by
+// both the embedded and the cloud collector — one tags
+// ongrid_source=embedded — which otherwise produced two incidents for one
+// real alert. Excluding them from the dedupe key merges those back into one.
+var nonIdentityLabels = map[string]struct{}{
+	"__name__":      {},
+	"ongrid_source": {},
+}
+
 func labelSetKey(m map[string]string) string {
 	if len(m) == 0 {
 		return "_"
 	}
 	keys := make([]string, 0, len(m))
 	for k := range m {
-		if k == "__name__" {
+		if _, skip := nonIdentityLabels[k]; skip {
 			continue
 		}
 		keys = append(keys, k)
