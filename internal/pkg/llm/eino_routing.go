@@ -44,6 +44,10 @@ const (
 	ProviderGemini    = "gemini"
 	ProviderDeepSeek  = "deepseek"
 	ProviderKimi      = "kimi"
+	// ProviderCustom is a generic OpenAI-compatible endpoint configured
+	// entirely from settings (base_url + key + models). Routing is
+	// id-agnostic, so it dispatches like any other provider.
+	ProviderCustom = "custom"
 )
 
 // ErrUnknownProvider is returned when WithProvider names a provider that
@@ -85,6 +89,15 @@ func WithProvider(provider string) model.Option {
 type RoutingChatModel struct {
 	inner           map[string]model.ChatModel
 	defaultProvider string
+	// defaultResolver, when non-nil, supplies the LIVE configured default
+	// provider and its model for calls that omit WithProvider — so a runtime
+	// change to the configured default (the home-page model picker writing
+	// default_provider / <provider>_default_model) takes effect without a
+	// restart. This is what makes background consumers that don't pin a model
+	// — the RCA investigator worker, query_translate — track the home
+	// selection. Returning an empty provider, or one with no inner ChatModel,
+	// falls back to defaultProvider.
+	defaultResolver func(context.Context) (provider, mdl string)
 }
 
 // RoutingChatModelConfig configures a RoutingChatModel.
@@ -95,6 +108,10 @@ type RoutingChatModel struct {
 type RoutingChatModelConfig struct {
 	Inner           map[string]model.ChatModel
 	DefaultProvider string
+	// DefaultResolver is optional; see RoutingChatModel.defaultResolver. When
+	// set, it overrides DefaultProvider per-call for calls that omit
+	// WithProvider, letting the configured default change live.
+	DefaultResolver func(context.Context) (provider, mdl string)
 }
 
 // NewRoutingChatModel builds a RoutingChatModel. Returns an error if
@@ -120,7 +137,36 @@ func NewRoutingChatModel(cfg RoutingChatModelConfig) (*RoutingChatModel, error) 
 	return &RoutingChatModel{
 		inner:           cp,
 		defaultProvider: cfg.DefaultProvider,
+		defaultResolver: cfg.DefaultResolver,
 	}, nil
+}
+
+// withDynamicDefault injects the live configured default provider (and its
+// model) for calls that omit WithProvider, so a runtime change to the
+// configured default — the home-page model picker writing default_provider —
+// takes effect without a restart. Calls that pin a provider (the chat picker)
+// keep it; a pinned model is never overridden. Falls back to defaultProvider
+// when the resolver is absent, returns empty, or names a provider with no
+// inner ChatModel (e.g. one added since boot).
+func (r *RoutingChatModel) withDynamicDefault(ctx context.Context, opts []model.Option) []model.Option {
+	if r.defaultResolver == nil {
+		return opts
+	}
+	if model.GetImplSpecificOptions(&providerOpts{}, opts...).provider != "" {
+		return opts
+	}
+	prov, mdl := r.defaultResolver(ctx)
+	if prov == "" {
+		return opts
+	}
+	if _, ok := r.inner[prov]; !ok {
+		return opts
+	}
+	extra := []model.Option{WithProvider(prov)}
+	if mdl != "" && model.GetCommonOptions(&model.Options{}, opts...).Model == nil {
+		extra = append(extra, model.WithModel(mdl))
+	}
+	return append(opts, extra...)
 }
 
 // pick resolves the inner ChatModel for this call.
@@ -141,6 +187,7 @@ func (r *RoutingChatModel) pick(opts ...model.Option) (model.ChatModel, string, 
 // Standard model.Option values (WithTemperature, WithTools, etc.) are
 // passed through verbatim; the WithProvider option is consumed here.
 func (r *RoutingChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	opts = r.withDynamicDefault(ctx, opts)
 	inner, _, err := r.pick(opts...)
 	if err != nil {
 		return nil, err
@@ -151,6 +198,7 @@ func (r *RoutingChatModel) Generate(ctx context.Context, input []*schema.Message
 // Stream dispatches a streaming chat to the selected inner model. The
 // caller must Close the returned StreamReader.
 func (r *RoutingChatModel) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	opts = r.withDynamicDefault(ctx, opts)
 	inner, _, err := r.pick(opts...)
 	if err != nil {
 		return nil, err
@@ -185,6 +233,7 @@ func (r *RoutingChatModel) WithTools(tools []*schema.ToolInfo) (model.ToolCallin
 	cp := &RoutingChatModel{
 		inner:           make(map[string]model.ChatModel, len(r.inner)),
 		defaultProvider: r.defaultProvider,
+		defaultResolver: r.defaultResolver,
 	}
 	for prov, inner := range r.inner {
 		if tcm, ok := inner.(model.ToolCallingChatModel); ok {

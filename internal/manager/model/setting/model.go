@@ -95,6 +95,15 @@ const (
 	KeyKimiModels       = "kimi_models"
 	KeyKimiDefaultModel = "kimi_default_model"
 
+	// Custom = a generic OpenAI-compatible endpoint (Ollama / vLLM /
+	// OpenRouter / LM Studio / Together / Groq / any self-hosted gateway).
+	// Unlike the named providers it has no default endpoint, so base_url is
+	// required — the resolver skips it until one is supplied.
+	KeyCustomAPIKey       = "custom_api_key" // sensitive
+	KeyCustomBaseURL      = "custom_base_url"
+	KeyCustomModels       = "custom_models"
+	KeyCustomDefaultModel = "custom_default_model"
+
 	// KeyLLMDefaultProvider stores the cluster-wide default provider id.
 	// Empty → first provider (alphabetical) is used.
 	KeyLLMDefaultProvider = "default_provider"
@@ -109,6 +118,7 @@ const (
 	LLMProviderGemini    = "gemini"
 	LLMProviderDeepSeek  = "deepseek"
 	LLMProviderKimi      = "kimi"
+	LLMProviderCustom    = "custom"
 )
 
 // Well-known keys under CategoryProm. internal/pkg/promauth reads bearer/

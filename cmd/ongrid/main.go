@@ -493,16 +493,16 @@ func main() {
 		providerCfgs = append(providerCfgs, llm.ProviderConfig{
 			ID: "openai", Label: "OpenAI",
 			APIKey:  cfg.OpenAI.APIKey,
-			Model:   firstNonEmpty(cfg.OpenAI.Model, "gpt-4o"),
+			Model:   firstNonEmpty(cfg.OpenAI.Model, "gpt-5.4"),
 			BaseURL: cfg.OpenAI.BaseURL,
-			Models:  dedupeModels(firstNonEmpty(cfg.OpenAI.Model, "gpt-4o"), "gpt-4o", "gpt-4-turbo"),
+			Models:  dedupeModels(firstNonEmpty(cfg.OpenAI.Model, "gpt-5.4"), "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-4o"),
 		})
 	}
 	if cfg.LLM.Anthropic.APIKey != "" {
 		providerCfgs = append(providerCfgs, llm.ProviderConfig{
 			ID: "anthropic", Label: "Anthropic",
 			APIKey:  cfg.LLM.Anthropic.APIKey,
-			Model:   firstNonEmpty(cfg.LLM.Anthropic.Model, "claude-3-5-sonnet-latest"),
+			Model:   firstNonEmpty(cfg.LLM.Anthropic.Model, "claude-sonnet-4-6"),
 			BaseURL: firstNonEmpty(cfg.LLM.Anthropic.BaseURL, "https://api.anthropic.com/v1"),
 			Models:  cfg.LLM.Anthropic.Models,
 		})
@@ -511,7 +511,7 @@ func main() {
 		providerCfgs = append(providerCfgs, llm.ProviderConfig{
 			ID: "zhipu", Label: "智谱 GLM",
 			APIKey:  cfg.LLM.Zhipu.APIKey,
-			Model:   firstNonEmpty(cfg.LLM.Zhipu.Model, "glm-4-plus"),
+			Model:   firstNonEmpty(cfg.LLM.Zhipu.Model, "glm-4.7"),
 			BaseURL: firstNonEmpty(cfg.LLM.Zhipu.BaseURL, "https://open.bigmodel.cn/api/paas/v4"),
 			Models:  cfg.LLM.Zhipu.Models,
 		})
@@ -520,7 +520,7 @@ func main() {
 		providerCfgs = append(providerCfgs, llm.ProviderConfig{
 			ID: "gemini", Label: "Gemini",
 			APIKey:  cfg.LLM.Gemini.APIKey,
-			Model:   firstNonEmpty(cfg.LLM.Gemini.Model, "gemini-1.5-pro"),
+			Model:   firstNonEmpty(cfg.LLM.Gemini.Model, "gemini-2.5-pro"),
 			BaseURL: firstNonEmpty(cfg.LLM.Gemini.BaseURL, "https://generativelanguage.googleapis.com/v1beta/openai"),
 			Models:  cfg.LLM.Gemini.Models,
 		})
@@ -529,7 +529,7 @@ func main() {
 		providerCfgs = append(providerCfgs, llm.ProviderConfig{
 			ID: "deepseek", Label: "DeepSeek",
 			APIKey:  cfg.LLM.DeepSeek.APIKey,
-			Model:   firstNonEmpty(cfg.LLM.DeepSeek.Model, "deepseek-chat"),
+			Model:   firstNonEmpty(cfg.LLM.DeepSeek.Model, "deepseek-v4-flash"),
 			BaseURL: firstNonEmpty(cfg.LLM.DeepSeek.BaseURL, "https://api.deepseek.com/v1"),
 			Models:  cfg.LLM.DeepSeek.Models,
 		})
@@ -538,7 +538,7 @@ func main() {
 		providerCfgs = append(providerCfgs, llm.ProviderConfig{
 			ID: "kimi", Label: "Kimi",
 			APIKey:  cfg.LLM.Kimi.APIKey,
-			Model:   firstNonEmpty(cfg.LLM.Kimi.Model, "moonshot-v1-8k"),
+			Model:   firstNonEmpty(cfg.LLM.Kimi.Model, "kimi-k2.6"),
 			BaseURL: firstNonEmpty(cfg.LLM.Kimi.BaseURL, "https://api.moonshot.cn/v1"),
 			Models:  cfg.LLM.Kimi.Models,
 		})
@@ -578,7 +578,7 @@ func main() {
 		// OpenAI's _default_model expansion (the legacy
 		// openai_api_key / openai_model / openai_base_url rows are
 		// already seeded above).
-		{settingmodel.KeyOpenAIDefaultModel, firstNonEmpty(cfg.OpenAI.Model, "gpt-4o"), false},
+		{settingmodel.KeyOpenAIDefaultModel, firstNonEmpty(cfg.OpenAI.Model, "gpt-5.4"), false},
 		// Cluster-wide default provider hint.
 		{settingmodel.KeyLLMDefaultProvider, cfg.LLM.Default, false},
 	} {
@@ -590,7 +590,7 @@ func main() {
 		key  string
 		list []string
 	}{
-		{settingmodel.KeyOpenAIModels, dedupeModels(firstNonEmpty(cfg.OpenAI.Model, "gpt-4o"), "gpt-4o", "gpt-4-turbo")},
+		{settingmodel.KeyOpenAIModels, dedupeModels(firstNonEmpty(cfg.OpenAI.Model, "gpt-5.4"), "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-4o")},
 		{settingmodel.KeyAnthropicModels, cfg.LLM.Anthropic.Models},
 		{settingmodel.KeyZhipuModels, cfg.LLM.Zhipu.Models},
 		{settingmodel.KeyGeminiModels, cfg.LLM.Gemini.Models},
@@ -618,42 +618,42 @@ func main() {
 		settingmodel.LLMProviderOpenAI: {
 			Label:   "OpenAI",
 			APIKey:  cfg.OpenAI.APIKey,
-			Model:   firstNonEmpty(cfg.OpenAI.Model, "gpt-4o"),
+			Model:   firstNonEmpty(cfg.OpenAI.Model, "gpt-5.4"),
 			BaseURL: cfg.OpenAI.BaseURL,
-			Models:  dedupeModels(firstNonEmpty(cfg.OpenAI.Model, "gpt-4o"), "gpt-4o", "gpt-4-turbo"),
+			Models:  dedupeModels(firstNonEmpty(cfg.OpenAI.Model, "gpt-5.4"), "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-4o"),
 		},
 		settingmodel.LLMProviderAnthropic: {
 			Label:   "Anthropic",
 			APIKey:  cfg.LLM.Anthropic.APIKey,
-			Model:   firstNonEmpty(cfg.LLM.Anthropic.Model, "claude-3-5-sonnet-latest"),
+			Model:   firstNonEmpty(cfg.LLM.Anthropic.Model, "claude-sonnet-4-6"),
 			BaseURL: firstNonEmpty(cfg.LLM.Anthropic.BaseURL, "https://api.anthropic.com/v1"),
 			Models:  cfg.LLM.Anthropic.Models,
 		},
 		settingmodel.LLMProviderZhipu: {
 			Label:   "智谱 GLM",
 			APIKey:  cfg.LLM.Zhipu.APIKey,
-			Model:   firstNonEmpty(cfg.LLM.Zhipu.Model, "glm-4-plus"),
+			Model:   firstNonEmpty(cfg.LLM.Zhipu.Model, "glm-4.7"),
 			BaseURL: firstNonEmpty(cfg.LLM.Zhipu.BaseURL, "https://open.bigmodel.cn/api/paas/v4"),
 			Models:  cfg.LLM.Zhipu.Models,
 		},
 		settingmodel.LLMProviderGemini: {
 			Label:   "Gemini",
 			APIKey:  cfg.LLM.Gemini.APIKey,
-			Model:   firstNonEmpty(cfg.LLM.Gemini.Model, "gemini-1.5-pro"),
+			Model:   firstNonEmpty(cfg.LLM.Gemini.Model, "gemini-2.5-pro"),
 			BaseURL: firstNonEmpty(cfg.LLM.Gemini.BaseURL, "https://generativelanguage.googleapis.com/v1beta/openai"),
 			Models:  cfg.LLM.Gemini.Models,
 		},
 		settingmodel.LLMProviderDeepSeek: {
 			Label:   "DeepSeek",
 			APIKey:  cfg.LLM.DeepSeek.APIKey,
-			Model:   firstNonEmpty(cfg.LLM.DeepSeek.Model, "deepseek-chat"),
+			Model:   firstNonEmpty(cfg.LLM.DeepSeek.Model, "deepseek-v4-flash"),
 			BaseURL: firstNonEmpty(cfg.LLM.DeepSeek.BaseURL, "https://api.deepseek.com/v1"),
 			Models:  cfg.LLM.DeepSeek.Models,
 		},
 		settingmodel.LLMProviderKimi: {
 			Label:   "Kimi",
 			APIKey:  cfg.LLM.Kimi.APIKey,
-			Model:   firstNonEmpty(cfg.LLM.Kimi.Model, "moonshot-v1-8k"),
+			Model:   firstNonEmpty(cfg.LLM.Kimi.Model, "kimi-k2.6"),
 			BaseURL: firstNonEmpty(cfg.LLM.Kimi.BaseURL, "https://api.moonshot.cn/v1"),
 			Models:  cfg.LLM.Kimi.Models,
 		},
@@ -1409,18 +1409,18 @@ func main() {
 			// 400 "模型不存在". The extractor then fell back to an unstructured
 			// report every time, which surfaced as the RCA "总是在转圈".
 			// Mirror buildAIOpsRuntime's default-provider resolution.
-			defSumProvider, defSumModel := llm.ProviderOpenAI, firstNonEmpty(cfg.OpenAI.Model, "gpt-4o")
+			defSumProvider, defSumModel := llm.ProviderOpenAI, firstNonEmpty(cfg.OpenAI.Model, "gpt-5.4")
 			switch cfg.LLM.Default {
 			case llm.ProviderZhipu:
-				defSumProvider, defSumModel = llm.ProviderZhipu, firstNonEmpty(cfg.LLM.Zhipu.Model, "glm-4-plus")
+				defSumProvider, defSumModel = llm.ProviderZhipu, firstNonEmpty(cfg.LLM.Zhipu.Model, "glm-4.7")
 			case llm.ProviderAnthropic:
-				defSumProvider, defSumModel = llm.ProviderAnthropic, firstNonEmpty(cfg.LLM.Anthropic.Model, "claude-3-5-sonnet-latest")
+				defSumProvider, defSumModel = llm.ProviderAnthropic, firstNonEmpty(cfg.LLM.Anthropic.Model, "claude-sonnet-4-6")
 			case llm.ProviderGemini:
-				defSumProvider, defSumModel = llm.ProviderGemini, firstNonEmpty(cfg.LLM.Gemini.Model, "gemini-1.5-pro")
+				defSumProvider, defSumModel = llm.ProviderGemini, firstNonEmpty(cfg.LLM.Gemini.Model, "gemini-2.5-pro")
 			case llm.ProviderDeepSeek:
-				defSumProvider, defSumModel = llm.ProviderDeepSeek, firstNonEmpty(cfg.LLM.DeepSeek.Model, "deepseek-chat")
+				defSumProvider, defSumModel = llm.ProviderDeepSeek, firstNonEmpty(cfg.LLM.DeepSeek.Model, "deepseek-v4-flash")
 			case llm.ProviderKimi:
-				defSumProvider, defSumModel = llm.ProviderKimi, firstNonEmpty(cfg.LLM.Kimi.Model, "moonshot-v1-8k")
+				defSumProvider, defSumModel = llm.ProviderKimi, firstNonEmpty(cfg.LLM.Kimi.Model, "kimi-k2.6")
 			case llm.ProviderOpenAI, "":
 				// Empty/openai: fall back to the first provider that actually
 				// has a key (mirrors the routing model's fallback) so an
@@ -1429,15 +1429,35 @@ func main() {
 				case cfg.OpenAI.APIKey != "":
 					// keep openai default
 				case cfg.LLM.Zhipu.APIKey != "":
-					defSumProvider, defSumModel = llm.ProviderZhipu, firstNonEmpty(cfg.LLM.Zhipu.Model, "glm-4-plus")
+					defSumProvider, defSumModel = llm.ProviderZhipu, firstNonEmpty(cfg.LLM.Zhipu.Model, "glm-4.7")
 				case cfg.LLM.Anthropic.APIKey != "":
-					defSumProvider, defSumModel = llm.ProviderAnthropic, firstNonEmpty(cfg.LLM.Anthropic.Model, "claude-3-5-sonnet-latest")
+					defSumProvider, defSumModel = llm.ProviderAnthropic, firstNonEmpty(cfg.LLM.Anthropic.Model, "claude-sonnet-4-6")
 				case cfg.LLM.Gemini.APIKey != "":
-					defSumProvider, defSumModel = llm.ProviderGemini, firstNonEmpty(cfg.LLM.Gemini.Model, "gemini-1.5-pro")
+					defSumProvider, defSumModel = llm.ProviderGemini, firstNonEmpty(cfg.LLM.Gemini.Model, "gemini-2.5-pro")
 				case cfg.LLM.DeepSeek.APIKey != "":
-					defSumProvider, defSumModel = llm.ProviderDeepSeek, firstNonEmpty(cfg.LLM.DeepSeek.Model, "deepseek-chat")
+					defSumProvider, defSumModel = llm.ProviderDeepSeek, firstNonEmpty(cfg.LLM.DeepSeek.Model, "deepseek-v4-flash")
 				case cfg.LLM.Kimi.APIKey != "":
-					defSumProvider, defSumModel = llm.ProviderKimi, firstNonEmpty(cfg.LLM.Kimi.Model, "moonshot-v1-8k")
+					defSumProvider, defSumModel = llm.ProviderKimi, firstNonEmpty(cfg.LLM.Kimi.Model, "kimi-k2.6")
+				}
+			}
+			// Prefer the DB-resolved default (default_provider + its model) —
+			// the same source the home-page picker writes and the routing
+			// model's DefaultResolver uses — over the env-only cfg.LLM.Default
+			// switch above, so the summarizer stays consistent with chat / RCA.
+			// Boot-time: a later default change is picked up on restart (the
+			// summarizer is the cheap extraction step; the analysis worker
+			// already tracks the default live via DefaultResolver).
+			if llmSettingsResolver != nil {
+				if provCfgs, resolvedDefault, rerr := llmSettingsResolver.ResolveProviders(rootCtx); rerr == nil && resolvedDefault != "" {
+					defSumProvider = resolvedDefault
+					for _, pc := range provCfgs {
+						if pc.ID == resolvedDefault {
+							if pc.Model != "" {
+								defSumModel = pc.Model
+							}
+							break
+						}
+					}
 				}
 			}
 			rcaInvConcrete = investigator.NewUsecase(invRepo, concreteRt, llmClient, investigator.Config{
@@ -2343,20 +2363,35 @@ func buildAIOpsRuntime(
 	// to the boot-time env-keyed providers so the kernel still wires.
 	if len(innerModels) == 0 {
 		if cfg.OpenAI.APIKey != "" {
-			addInner(llm.ProviderOpenAI, firstNonEmpty(cfg.OpenAI.Model, "gpt-4o"))
+			addInner(llm.ProviderOpenAI, firstNonEmpty(cfg.OpenAI.Model, "gpt-5.4"))
 		}
 		if cfg.LLM.Anthropic.APIKey != "" {
-			addInner(llm.ProviderAnthropic, firstNonEmpty(cfg.LLM.Anthropic.Model, "claude-3-5-sonnet-latest"))
+			addInner(llm.ProviderAnthropic, firstNonEmpty(cfg.LLM.Anthropic.Model, "claude-sonnet-4-6"))
 		}
 		if cfg.LLM.Zhipu.APIKey != "" {
-			addInner(llm.ProviderZhipu, firstNonEmpty(cfg.LLM.Zhipu.Model, "glm-4-plus"))
+			addInner(llm.ProviderZhipu, firstNonEmpty(cfg.LLM.Zhipu.Model, "glm-4.7"))
 		}
 		if cfg.LLM.Gemini.APIKey != "" {
-			addInner(llm.ProviderGemini, firstNonEmpty(cfg.LLM.Gemini.Model, "gemini-1.5-pro"))
+			addInner(llm.ProviderGemini, firstNonEmpty(cfg.LLM.Gemini.Model, "gemini-2.5-pro"))
 		}
 	}
 	if len(innerModels) == 0 {
 		return nil, fmt.Errorf("chatruntime: no LLM provider configured")
+	}
+	// Pre-register an inner for every known provider id (incl. the generic
+	// "custom" endpoint) even if unconfigured at boot, so a provider whose key
+	// is added via the UI AFTER boot routes immediately — no restart. Only the
+	// inner's existence is boot-time; the per-call key/baseURL is resolved
+	// dynamically by llmClient. Unconfigured providers never reach the picker
+	// (the /v1/aiops/models catalog gates on ResolveProviders), so they're
+	// never selected; a stray call to one fails cleanly at key resolution.
+	for _, id := range []string{
+		llm.ProviderOpenAI, llm.ProviderAnthropic, llm.ProviderZhipu,
+		llm.ProviderGemini, llm.ProviderDeepSeek, llm.ProviderKimi, llm.ProviderCustom,
+	} {
+		if _, ok := innerModels[id]; !ok {
+			addInner(id, "") // model supplied per-call (picker / DefaultResolver)
+		}
 	}
 	if defProv == "" {
 		defProv = llm.ProviderOpenAI
@@ -2371,9 +2406,31 @@ func buildAIOpsRuntime(
 			break
 		}
 	}
+	// DefaultResolver lets calls that omit a provider (the RCA investigator
+	// worker, query_translate) track the LIVE configured default — the model
+	// the home-page picker writes to default_provider / <provider>_default_model
+	// — instead of the boot-time defProv. The chat picker pins a provider
+	// per-message and is unaffected. Resolved per-call (cheap: a settings read,
+	// and only on default-routed calls, which are low-frequency).
+	var defaultResolver func(context.Context) (string, string)
+	if resolver != nil {
+		defaultResolver = func(rctx context.Context) (string, string) {
+			provCfgs, resolvedDefault, rerr := resolver.ResolveProviders(rctx)
+			if rerr != nil || resolvedDefault == "" {
+				return "", ""
+			}
+			for _, pc := range provCfgs {
+				if pc.ID == resolvedDefault {
+					return resolvedDefault, pc.Model
+				}
+			}
+			return resolvedDefault, ""
+		}
+	}
 	chatModel, err := llm.NewRoutingChatModel(llm.RoutingChatModelConfig{
 		Inner:           innerModels,
 		DefaultProvider: defProv,
+		DefaultResolver: defaultResolver,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("chatruntime: NewRoutingChatModel: %w", err)

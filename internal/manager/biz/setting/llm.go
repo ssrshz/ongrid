@@ -56,6 +56,7 @@ func NewLLMSettingsResolver(svc *Service, defaults map[string]EnvProviderDefault
 // ResolveProviders can iterate uniformly.
 type providerKeys struct {
 	id           string
+	label        string // display fallback when env defaults carry none (e.g. custom)
 	apiKey       string
 	baseURL      string
 	models       string
@@ -111,6 +112,14 @@ func allProviderKeys() []providerKeys {
 			models:       model.KeyKimiModels,
 			defaultModel: model.KeyKimiDefaultModel,
 		},
+		{
+			id:           model.LLMProviderCustom,
+			label:        "Custom",
+			apiKey:       model.KeyCustomAPIKey,
+			baseURL:      model.KeyCustomBaseURL,
+			models:       model.KeyCustomModels,
+			defaultModel: model.KeyCustomDefaultModel,
+		},
 	}
 }
 
@@ -139,6 +148,12 @@ func (r *LLMSettingsResolver) ResolveProviders(ctx context.Context) ([]llm.Provi
 		baseURL, _, _ := r.svc.Get(ctx, model.CategoryLLM, pk.baseURL)
 		if strings.TrimSpace(baseURL) == "" {
 			baseURL = def.BaseURL
+		}
+		// A custom provider has no default endpoint — without a base URL the
+		// SDK would silently fall back to OpenAI's, sending the operator's key
+		// to the wrong host. Skip until a base URL is supplied.
+		if pk.id == model.LLMProviderCustom && strings.TrimSpace(baseURL) == "" {
+			continue
 		}
 
 		// Model list: DB JSON wins; fall back to env defaults; fall back
@@ -185,9 +200,13 @@ func (r *LLMSettingsResolver) ResolveProviders(ctx context.Context) ([]llm.Provi
 		// Dedup while preserving order.
 		models = dedupStrings(models)
 
+		label := def.Label
+		if strings.TrimSpace(label) == "" {
+			label = pk.label // env defaults carry no label for custom
+		}
 		out = append(out, llm.ProviderConfig{
 			ID:      pk.id,
-			Label:   def.Label,
+			Label:   label,
 			APIKey:  apiKey,
 			Model:   defaultModel,
 			BaseURL: baseURL,

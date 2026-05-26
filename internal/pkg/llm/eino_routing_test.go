@@ -21,6 +21,7 @@ type fakeChatModel struct {
 	mu        sync.Mutex
 	lastInput []*schema.Message
 	lastOpts  int
+	lastModel string
 	tools     []*schema.ToolInfo
 
 	generateCalls atomic.Int32
@@ -36,6 +37,9 @@ func (f *fakeChatModel) Generate(_ context.Context, input []*schema.Message, opt
 	f.mu.Lock()
 	f.lastInput = input
 	f.lastOpts = len(opts)
+	if m := model.GetCommonOptions(&model.Options{}, opts...).Model; m != nil {
+		f.lastModel = *m
+	}
 	f.mu.Unlock()
 	if f.genErr != nil {
 		return nil, f.genErr
@@ -180,6 +184,72 @@ func TestRoutingChatModel_FallsBackToDefault(t *testing.T) {
 	}
 	if rcm.DefaultProvider() != ProviderAnthropic {
 		t.Fatalf("DefaultProvider() = %q, want %q", rcm.DefaultProvider(), ProviderAnthropic)
+	}
+}
+
+// TestRoutingChatModel_DynamicDefault verifies that DefaultResolver lets the
+// configured default change live: a call that omits WithProvider routes to the
+// resolver's provider (and gets its model injected), an explicit provider /
+// model still wins, and a resolved provider with no inner falls back to the
+// boot default. This is what makes the RCA investigator track the home-page
+// model selection without a restart.
+func TestRoutingChatModel_DynamicDefault(t *testing.T) {
+	t.Parallel()
+
+	openai := &fakeChatModel{id: "openai"}
+	anthropic := &fakeChatModel{id: "anthropic"}
+	resolved, mdl := ProviderAnthropic, "claude-opus-4-7"
+	rcm, err := NewRoutingChatModel(RoutingChatModelConfig{
+		Inner: map[string]model.ChatModel{
+			ProviderOpenAI:    openai,
+			ProviderAnthropic: anthropic,
+		},
+		DefaultProvider: ProviderOpenAI, // boot default differs from resolved
+		DefaultResolver: func(context.Context) (string, string) { return resolved, mdl },
+	})
+	if err != nil {
+		t.Fatalf("NewRoutingChatModel: %v", err)
+	}
+	msgs := []*schema.Message{{Role: schema.User, Content: "hi"}}
+
+	// (1) No WithProvider → dynamic default routes to anthropic + injects model.
+	got, err := rcm.Generate(context.Background(), msgs)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if got.Content != "from:anthropic" {
+		t.Fatalf("dynamic default routed to %q, want from:anthropic", got.Content)
+	}
+	if anthropic.lastModel != mdl {
+		t.Fatalf("dynamic default model = %q, want %q", anthropic.lastModel, mdl)
+	}
+
+	// (2) Explicit WithProvider wins over the resolver.
+	got, err = rcm.Generate(context.Background(), msgs, WithProvider(ProviderOpenAI))
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if got.Content != "from:openai" {
+		t.Fatalf("explicit provider routed to %q, want from:openai", got.Content)
+	}
+
+	// (3) Explicit model is not clobbered by the resolver's model.
+	openai.lastModel = ""
+	if _, err := rcm.Generate(context.Background(), msgs, WithProvider(ProviderOpenAI), model.WithModel("gpt-4o")); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if openai.lastModel != "gpt-4o" {
+		t.Fatalf("explicit model = %q, want gpt-4o", openai.lastModel)
+	}
+
+	// (4) Resolver naming an unconfigured provider falls back to the boot default.
+	resolved = ProviderDeepSeek // not in inner
+	got, err = rcm.Generate(context.Background(), msgs)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if got.Content != "from:openai" {
+		t.Fatalf("unknown resolved provider routed to %q, want boot default from:openai", got.Content)
 	}
 }
 

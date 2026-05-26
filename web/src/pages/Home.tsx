@@ -22,6 +22,7 @@ import { useModelSelection } from '@/store/modelSelection';
 import { PromptCard } from '@/components/PromptCard';
 import { StatusRow } from '@/components/StatusRow';
 import { createSession, listModels, type LLMProvider } from '@/api/chat';
+import { setSetting, invalidateLLMRouter } from '@/api/settings';
 import { listEdges } from '@/api/edges';
 import { useI18n } from '@/i18n/locale';
 
@@ -182,6 +183,26 @@ export default function HomePage() {
     };
   }, []);
 
+  // Persist a home-page pick as the GLOBAL default (default_provider +
+  // <provider>_default_model) so every server-side LLM consumer that doesn't
+  // pin a model — the RCA investigator worker, query_translate — and the chat
+  // default all use the same model shown here. The pick also rides the shared
+  // store so the launched chat session inherits it. Per-message overrides
+  // inside a chat thread stay transient (ChatThread never writes the default).
+  async function handleModelChange(sel: ModelSelection | null) {
+    setStoreModel(sel);
+    if (!sel?.provider) return;
+    try {
+      await setSetting('llm', 'default_provider', sel.provider, false);
+      if (sel.model) {
+        await setSetting('llm', `${sel.provider}_default_model`, sel.model, false);
+      }
+      await invalidateLLMRouter();
+    } catch {
+      /* non-fatal — the pick still rides the per-session store */
+    }
+  }
+
   async function startSession(content: string) {
     if (!content.trim() || submitting) return;
     setError(null);
@@ -226,7 +247,7 @@ export default function HomePage() {
             autoFocus
             providers={providers}
             selectedModel={selectedModel}
-            onModelChange={setStoreModel}
+            onModelChange={handleModelChange}
             webSearchEnabled={webSearchEnabled}
             onWebSearchToggle={setWebSearchEnabled}
           />

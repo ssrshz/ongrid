@@ -19,7 +19,7 @@ import { ProviderIcon } from '@/components/icons/Provider';
 import { cn } from '@/lib/cn';
 import { useI18n } from '@/i18n/locale';
 
-type LLMProviderID = 'openai' | 'anthropic' | 'zhipu' | 'gemini' | 'deepseek' | 'kimi';
+type LLMProviderID = 'openai' | 'anthropic' | 'zhipu' | 'gemini' | 'deepseek' | 'kimi' | 'custom';
 
 type LLMProviderForm = {
   api_key: string;
@@ -37,6 +37,10 @@ type LLMProviderMeta = {
   baseURLPlaceholderZh: string;
   baseURLPlaceholderEn: string;
   modelPlaceholder: string;
+  // custom = the generic OpenAI-compatible card: base_url is required and
+  // shown prominently (not under Advanced), and it's the one place we say
+  // "OpenAI-compatible" out loud.
+  custom?: boolean;
   // system_settings.llm.<key> — 列在这里让 loader / saver 直接查
   keyAPIKey: string;
   keyBaseURL: string;
@@ -48,11 +52,11 @@ const LLM_PROVIDERS: LLMProviderMeta[] = [
   {
     id: 'openai',
     label: 'OpenAI',
-    hintZh: '官方 API 或兼容 OpenAI shape 的 Azure / DeepSeek / 自部署 vLLM',
-    hintEn: 'Official API or OpenAI-compatible Azure / DeepSeek / self-hosted vLLM',
+    hintZh: 'OpenAI 官方 API。在 platform.openai.com 获取 API key。',
+    hintEn: 'OpenAI official API. Get an API key at platform.openai.com.',
     baseURLPlaceholderZh: 'https://api.openai.com/v1（默认）',
     baseURLPlaceholderEn: 'https://api.openai.com/v1 (default)',
-    modelPlaceholder: 'gpt-4o',
+    modelPlaceholder: 'gpt-5.4',
     keyAPIKey: 'openai_api_key',
     keyBaseURL: 'openai_base_url',
     keyModels: 'openai_models',
@@ -61,51 +65,51 @@ const LLM_PROVIDERS: LLMProviderMeta[] = [
   {
     id: 'anthropic',
     label: 'Anthropic',
-    hintZh: '走 OpenAI 兼容端点 https://api.anthropic.com/v1',
-    hintEn: 'Uses OpenAI-compatible endpoint https://api.anthropic.com/v1',
+    hintZh: 'Anthropic Claude。在 console.anthropic.com 获取 API key。',
+    hintEn: 'Anthropic Claude. Get an API key at console.anthropic.com.',
     baseURLPlaceholderZh: 'https://api.anthropic.com/v1',
     baseURLPlaceholderEn: 'https://api.anthropic.com/v1',
-    modelPlaceholder: 'claude-3-5-sonnet-latest',
+    modelPlaceholder: 'claude-sonnet-4-6',
     keyAPIKey: 'anthropic_api_key',
     keyBaseURL: 'anthropic_base_url',
     keyModels: 'anthropic_models',
     keyDefaultModel: 'anthropic_default_model',
   },
   {
-    id: 'zhipu',
-    label: '智谱 GLM',
-    labelEn: 'Zhipu GLM',
-    hintZh: 'open.bigmodel.cn 的 OpenAI 兼容路径',
-    hintEn: 'OpenAI-compatible path on open.bigmodel.cn',
-    baseURLPlaceholderZh: 'https://open.bigmodel.cn/api/paas/v4',
-    baseURLPlaceholderEn: 'https://open.bigmodel.cn/api/paas/v4',
-    modelPlaceholder: 'glm-4-plus',
-    keyAPIKey: 'zhipu_api_key',
-    keyBaseURL: 'zhipu_base_url',
-    keyModels: 'zhipu_models',
-    keyDefaultModel: 'zhipu_default_model',
-  },
-  {
     id: 'gemini',
     label: 'Gemini',
-    hintZh: 'generativelanguage.googleapis.com 的 OpenAI 兼容路径',
-    hintEn: 'OpenAI-compatible path on generativelanguage.googleapis.com',
+    hintZh: 'Google Gemini。在 aistudio.google.com 获取 API key。',
+    hintEn: 'Google Gemini. Get an API key at aistudio.google.com.',
     baseURLPlaceholderZh: 'https://generativelanguage.googleapis.com/v1beta/openai',
     baseURLPlaceholderEn: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    modelPlaceholder: 'gemini-1.5-pro',
+    modelPlaceholder: 'gemini-2.5-pro',
     keyAPIKey: 'gemini_api_key',
     keyBaseURL: 'gemini_base_url',
     keyModels: 'gemini_models',
     keyDefaultModel: 'gemini_default_model',
   },
   {
+    id: 'zhipu',
+    label: '智谱 GLM',
+    labelEn: 'Zhipu GLM',
+    hintZh: '智谱 GLM（中国）。在 open.bigmodel.cn 获取 API key。',
+    hintEn: 'Zhipu GLM (China-based). Get an API key at open.bigmodel.cn.',
+    baseURLPlaceholderZh: 'https://open.bigmodel.cn/api/paas/v4',
+    baseURLPlaceholderEn: 'https://open.bigmodel.cn/api/paas/v4',
+    modelPlaceholder: 'glm-4.7',
+    keyAPIKey: 'zhipu_api_key',
+    keyBaseURL: 'zhipu_base_url',
+    keyModels: 'zhipu_models',
+    keyDefaultModel: 'zhipu_default_model',
+  },
+  {
     id: 'deepseek',
     label: 'DeepSeek',
-    hintZh: 'api.deepseek.com 的原生 OpenAI 兼容端点（deepseek-chat / deepseek-reasoner）',
-    hintEn: 'Native OpenAI-compatible endpoint at api.deepseek.com (deepseek-chat / deepseek-reasoner)',
+    hintZh: 'DeepSeek（中国）。在 platform.deepseek.com 获取 API key。',
+    hintEn: 'DeepSeek (China-based). Get an API key at platform.deepseek.com.',
     baseURLPlaceholderZh: 'https://api.deepseek.com/v1',
     baseURLPlaceholderEn: 'https://api.deepseek.com/v1',
-    modelPlaceholder: 'deepseek-chat',
+    modelPlaceholder: 'deepseek-v4-flash',
     keyAPIKey: 'deepseek_api_key',
     keyBaseURL: 'deepseek_base_url',
     keyModels: 'deepseek_models',
@@ -115,15 +119,30 @@ const LLM_PROVIDERS: LLMProviderMeta[] = [
     id: 'kimi',
     label: 'Kimi',
     labelEn: 'Kimi (Moonshot)',
-    hintZh: 'api.moonshot.cn 的 OpenAI 兼容端点（moonshot-v1-8k / 32k / 128k）',
-    hintEn: 'OpenAI-compatible endpoint at api.moonshot.cn (moonshot-v1-8k / 32k / 128k)',
+    hintZh: 'Kimi / Moonshot（中国）。在 platform.moonshot.cn 获取 API key。',
+    hintEn: 'Kimi / Moonshot (China-based). Get an API key at platform.moonshot.cn.',
     baseURLPlaceholderZh: 'https://api.moonshot.cn/v1',
     baseURLPlaceholderEn: 'https://api.moonshot.cn/v1',
-    modelPlaceholder: 'moonshot-v1-8k',
+    modelPlaceholder: 'kimi-k2.6',
     keyAPIKey: 'kimi_api_key',
     keyBaseURL: 'kimi_base_url',
     keyModels: 'kimi_models',
     keyDefaultModel: 'kimi_default_model',
+  },
+  {
+    id: 'custom',
+    custom: true,
+    label: '自定义（OpenAI 兼容）',
+    labelEn: 'Custom (OpenAI-compatible)',
+    hintZh: '任意 OpenAI 兼容服务：Ollama / vLLM / OpenRouter / LM Studio / Together / Groq 等。填 Base URL + key + 模型名即可。无需鉴权的本地服务（如 Ollama）随便填个占位 key。',
+    hintEn: 'Any OpenAI-compatible service: Ollama / vLLM / OpenRouter / LM Studio / Together / Groq, etc. Enter Base URL + key + model name. For keyless local servers (e.g. Ollama) just put any placeholder key.',
+    baseURLPlaceholderZh: '例 http://localhost:11434/v1（Ollama）· https://openrouter.ai/api/v1',
+    baseURLPlaceholderEn: 'e.g. http://localhost:11434/v1 (Ollama) · https://openrouter.ai/api/v1',
+    modelPlaceholder: 'llama3.1 / qwen2.5-coder / ...',
+    keyAPIKey: 'custom_api_key',
+    keyBaseURL: 'custom_base_url',
+    keyModels: 'custom_models',
+    keyDefaultModel: 'custom_default_model',
   },
 ];
 
@@ -133,8 +152,8 @@ const LLM_PROVIDERS: LLMProviderMeta[] = [
 // can reach over the public internet without VPN; en-US flips it so
 // OpenAI / Anthropic / Gemini head the list. Falls back to LLM_PROVIDERS
 // order for an unknown locale.
-const PROVIDER_ORDER_ZH = ['zhipu', 'deepseek', 'kimi', 'openai', 'anthropic', 'gemini'] as const;
-const PROVIDER_ORDER_EN = ['openai', 'anthropic', 'gemini', 'zhipu', 'deepseek', 'kimi'] as const;
+const PROVIDER_ORDER_ZH = ['zhipu', 'deepseek', 'kimi', 'openai', 'anthropic', 'gemini', 'custom'] as const;
+const PROVIDER_ORDER_EN = ['openai', 'anthropic', 'gemini', 'zhipu', 'deepseek', 'kimi', 'custom'] as const;
 
 function orderedProviders(locale: string): LLMProviderMeta[] {
   const order = locale === 'zh-CN' ? PROVIDER_ORDER_ZH : PROVIDER_ORDER_EN;
@@ -315,7 +334,9 @@ function LLMProviderCard({ meta }: { meta: LLMProviderMeta }) {
     }
   };
 
-  const configured = server.api_key.trim() !== '';
+  // A custom provider also needs a base URL to be reachable; the named
+  // providers have a working default endpoint, so a key alone suffices.
+  const configured = server.api_key.trim() !== '' && (!meta.custom || server.base_url.trim() !== '');
 
   return (
     <Card className="p-5">
@@ -335,7 +356,11 @@ function LLMProviderCard({ meta }: { meta: LLMProviderMeta }) {
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <FieldRow
               label="API Key"
-              hint={tr('留空 = 该提供商不出现在聊天页下拉里', 'Leave empty to hide this provider from the chat dropdown')}
+              hint={
+                meta.custom
+                  ? tr('无需鉴权的本地服务填任意占位值', 'For keyless local servers, any placeholder works')
+                  : tr('留空 = 该提供商不出现在聊天页下拉里', 'Leave empty to hide this provider from the chat dropdown')
+              }
               sensitive
               revealed={revealed}
               onToggleReveal={() => setRevealed((v) => !v)}
@@ -343,14 +368,36 @@ function LLMProviderCard({ meta }: { meta: LLMProviderMeta }) {
               onChange={(v) => update('api_key', v)}
               placeholder="sk-... / tvly-... / glsa-..."
             />
-            <FieldRow
-              label={tr('Base URL（可选）', 'Base URL (optional)')}
-              hint={tr('留空 = 用厂商官方端点', 'Leave empty to use the vendor official endpoint')}
-              value={draft.base_url}
-              onChange={(v) => update('base_url', v)}
-              placeholder={tr(meta.baseURLPlaceholderZh, meta.baseURLPlaceholderEn)}
-            />
+            {meta.custom && (
+              <FieldRow
+                label={tr('Base URL（必填）', 'Base URL (required)')}
+                hint={tr('你的 OpenAI 兼容端点', 'Your OpenAI-compatible endpoint')}
+                value={draft.base_url}
+                onChange={(v) => update('base_url', v)}
+                placeholder={tr(meta.baseURLPlaceholderZh, meta.baseURLPlaceholderEn)}
+              />
+            )}
           </div>
+
+          {!meta.custom && (
+            // Named providers ship a working default endpoint, so Base URL is
+            // an advanced override (proxy / gateway / Azure) — tuck it away so
+            // first-time users just paste a key and go.
+            <details className="rounded-md border border-zinc-800/60 bg-zinc-950/30 px-3 py-2">
+              <summary className="cursor-pointer select-none text-[11px] text-zinc-500 hover:text-zinc-300">
+                {tr('高级 · Base URL', 'Advanced · Base URL')}
+              </summary>
+              <div className="mt-2">
+                <FieldRow
+                  label="Base URL"
+                  hint={tr('留空 = 用厂商官方端点；仅在走代理 / 网关时填', 'Leave empty for the vendor endpoint; set only when routing through a proxy / gateway')}
+                  value={draft.base_url}
+                  onChange={(v) => update('base_url', v)}
+                  placeholder={tr(meta.baseURLPlaceholderZh, meta.baseURLPlaceholderEn)}
+                />
+              </div>
+            </details>
+          )}
 
           <div>
             <span className="mb-1 block text-xs text-zinc-400">{tr('模型列表', 'Models')}</span>
