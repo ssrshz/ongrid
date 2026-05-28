@@ -31,8 +31,8 @@ Qué resuelve:
 **Instalar desde una release** —— repo privado, descarga con `gh`:
 
 ```bash
-gh release download v0.7.158 --repo ongridio/ongrid -p 'ongrid-v0.7.158-linux-amd64.tar.gz*'
-tar xzf ongrid-v0.7.158-linux-amd64.tar.gz && cd ongrid-v0.7.158-linux-amd64
+gh release download v0.7.159 --repo ongridio/ongrid -p 'ongrid-v0.7.159-linux-amd64.tar.xz*'
+tar xf ongrid-v0.7.159-linux-amd64.tar.xz && cd ongrid-v0.7.159-linux-amd64
 sudo ./install.sh
 ```
 

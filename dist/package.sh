@@ -8,8 +8,8 @@
 #   OUT_DIR     directory in which the final tarball is written
 #
 # Produces:
-#   <OUT_DIR>/ongrid-<VERSION>-linux-amd64.tar.gz
-#   <OUT_DIR>/ongrid-<VERSION>-linux-amd64.tar.gz.sha256
+#   <OUT_DIR>/ongrid-<VERSION>-linux-amd64.tar.xz
+#   <OUT_DIR>/ongrid-<VERSION>-linux-amd64.tar.xz.sha256
 #
 # The script is tolerant of missing deploy/install/* files: it warns and
 # continues so the pipeline is testable before the on-target scripts land.
@@ -32,7 +32,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 PKG_NAME="ongrid-${VERSION}-linux-amd64"
-TARBALL="${OUT_DIR}/${PKG_NAME}.tar.gz"
+TARBALL="${OUT_DIR}/${PKG_NAME}.tar.xz"
 SHAFILE="${TARBALL}.sha256"
 
 # --- pretty print helpers ---------------------------------------------------
@@ -43,6 +43,12 @@ die()  { printf '[pkg] error: %s\n' "$*" >&2; exit 1; }
 # --- docker presence check --------------------------------------------------
 if ! command -v docker >/dev/null 2>&1; then
     die "docker not found in PATH — required to 'docker save' the ongrid image"
+fi
+
+# --- xz presence check ------------------------------------------------------
+# The release tarball is xz-compressed (see "tar it up" below).
+if ! command -v xz >/dev/null 2>&1; then
+    die "xz not found in PATH — required to compress the release tarball (apt/dnf install xz / xz-utils)"
 fi
 
 # --- stage dir layout -------------------------------------------------------
@@ -426,19 +432,22 @@ copy_opt "${REPO_ROOT}/deploy/install/edge/ongrid-edge.service" \
 copy_opt "${REPO_ROOT}/deploy/install/apply-pending-upgrade.sh" \
          "${STAGE_DIR}/edge/apply-pending-upgrade.sh" 755
 
+# Host-side ADR-024 bundle rebuilder (see note below). install.sh /
+# upgrade.sh run it post-extract to reassemble the upgrade bundle from
+# the loose binaries already staged in edge/.
+copy_opt "${REPO_ROOT}/deploy/install/edge/build-edge-bundle.sh" \
+         "${STAGE_DIR}/edge/build-edge-bundle.sh" 755
+
 # --- edge bundle for ADR-024 one-button upgrade -----------------------------
-# `make build-edge-bundle` produced edge-bundle-<arch>-<version>.tar.gz
-# (+ .sha256) under dist/out/edge-bundles/. Stage them next to the
-# individual edge binaries so nginx serves them out of the same
-# /edge/ static path (no extra location block needed). install.sh /
-# upgrade.sh extract STAGE_DIR/edge/* to /opt/ongrid/edge/ on the host,
-# which docker-compose bind-mounts into ongrid-web's nginx html.
-for f in "${REPO_ROOT}/dist/out/edge-bundles/"edge-bundle-*; do
-    [ -f "$f" ] || continue
-    dst="${STAGE_DIR}/edge/$(basename "$f")"
-    cp "$f" "$dst"
-    log "  + edge/$(basename "$f")"
-done
+# We deliberately do NOT pack edge-bundle-<arch>-<version>.tar.gz into the
+# release tarball anymore. That bundle is byte-for-byte a copy of the loose
+# linux-amd64 binaries already staged above, and being pre-gzipped it added
+# ~120 MB of incompressible payload to every release (it is still published
+# as a standalone GitHub release asset by `make build-edge-bundle`).
+# install.sh / upgrade.sh now reassemble it on the manager host via
+# edge/build-edge-bundle.sh after extracting STAGE_DIR/edge/* to
+# /opt/ongrid/edge/, where docker-compose bind-mounts it into ongrid-web's
+# nginx html and it is served from /edge/ exactly as before.
 
 # --- manifest ---------------------------------------------------------------
 log "manifest:"
@@ -446,11 +455,18 @@ log "manifest:"
   | sort -z | xargs -0 -I{} bash -c 'printf "  %10d  %s\n" "$(wc -c < "{}")" "{}"' ) || true
 
 # --- tar it up --------------------------------------------------------------
+# xz -9e over gzip: the staged tree is almost entirely stripped Go binaries +
+# docker image tars, which xz packs ~35% tighter than gzip. `tar xf` on the
+# target auto-detects xz (xz-utils is ubiquitous on Linux), so the operator
+# extract command is unchanged. -T0 parallelises across cores; the slight
+# ratio cost vs single-thread is worth the faster release builds. We pipe
+# explicitly rather than rely on `tar -J`/`-I` so the invocation is portable
+# across GNU tar and bsdtar build hosts. set -o pipefail surfaces failures.
 mkdir -p "${OUT_DIR}"
 log "creating ${TARBALL}"
 STAGE_PARENT="$(dirname "${STAGE_DIR}")"
 STAGE_BASE="$(basename "${STAGE_DIR}")"
-tar -czf "${TARBALL}" -C "${STAGE_PARENT}" "${STAGE_BASE}"
+tar -cf - -C "${STAGE_PARENT}" "${STAGE_BASE}" | xz -9e -T0 -c > "${TARBALL}"
 
 # --- sha256 sidecar ---------------------------------------------------------
 log "computing sha256"

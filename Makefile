@@ -141,13 +141,13 @@ run-ongrid-edge: ## 本地直接跑 ongrid-edge
 # Produces a single, self-contained tarball ready to scp to any Linux box with
 # docker + docker compose installed:
 #
-#     dist/out/ongrid-$(VERSION)-linux-amd64.tar.gz
+#     dist/out/ongrid-$(VERSION)-linux-amd64.tar.xz
 #
 # Pipeline (wired via `make package`):
 #   1. build-linux      — cross-compile ongrid for linux/amd64 (CGO off).
 #   2. build-edge-all   — cross-compile ongrid-edge for 4 targets.
 #   3. docker-build     — docker build ongrid:$(VERSION).
-#   4. dist/package.sh  — stage + docker save + tar.gz + sha256.
+#   4. dist/package.sh  — stage + docker save + tar.xz + sha256.
 
 .PHONY: build-linux
 build-linux: ## [release] 交叉编译 ongrid linux/amd64
@@ -387,9 +387,9 @@ package: fetch-promtail fetch-otelcol fetch-node-exporter fetch-process-exporter
 	bash dist/package.sh "$(VERSION)" "$(STAGE)" "$(OUT)"
 	@echo ""
 	@echo "=== release artefact ==="
-	@ls -lh $(OUT)/ongrid-$(VERSION)-linux-amd64.tar.gz
-	@if [ -f $(OUT)/ongrid-$(VERSION)-linux-amd64.tar.gz.sha256 ]; then \
-		cat $(OUT)/ongrid-$(VERSION)-linux-amd64.tar.gz.sha256; \
+	@ls -lh $(OUT)/ongrid-$(VERSION)-linux-amd64.tar.xz
+	@if [ -f $(OUT)/ongrid-$(VERSION)-linux-amd64.tar.xz.sha256 ]; then \
+		cat $(OUT)/ongrid-$(VERSION)-linux-amd64.tar.xz.sha256; \
 	fi
 
 .PHONY: dist-clean

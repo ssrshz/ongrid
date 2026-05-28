@@ -9,8 +9,8 @@ compose installed.
 A single tarball:
 
 ```
-dist/out/ongrid-v<VERSION>-linux-amd64.tar.gz
-dist/out/ongrid-v<VERSION>-linux-amd64.tar.gz.sha256
+dist/out/ongrid-v<VERSION>-linux-amd64.tar.xz
+dist/out/ongrid-v<VERSION>-linux-amd64.tar.xz.sha256
 ```
 
 Unpacked layout:
@@ -52,12 +52,12 @@ combos so users can run them directly on heterogeneous hosts.
    - `docker-build`      — build `ongrid:<VERSION>` image
    - stage everything under `dist/stage/ongrid-<VERSION>-linux-amd64/`
    - emit the tarball + sha256 under `dist/out/`
-3. Ship: `scp dist/out/ongrid-v<VERSION>-linux-amd64.tar.gz user@host:~/`.
+3. Ship: `scp dist/out/ongrid-v<VERSION>-linux-amd64.tar.xz user@host:~/`.
 4. On the target: untar, `sudo ./install.sh`.
 
 ## Checksum
 
-`dist/out/ongrid-v<VERSION>-linux-amd64.tar.gz.sha256` sits next to the
+`dist/out/ongrid-v<VERSION>-linux-amd64.tar.xz.sha256` sits next to the
 tarball. The install script can verify integrity with `sha256sum -c` on
 Linux or `shasum -a 256 -c` on macOS.
 
@@ -67,7 +67,7 @@ Test the tarball without shipping:
 
 ```
 make package
-mkdir -p /tmp/ongrid-test && tar -xzf dist/out/ongrid-v*.tar.gz -C /tmp/ongrid-test
+mkdir -p /tmp/ongrid-test && tar -xf dist/out/ongrid-v*.tar.xz -C /tmp/ongrid-test
 cd /tmp/ongrid-test/ongrid-v*
 ls -R
 # Inside a disposable Ubuntu container with docker socket mounted:

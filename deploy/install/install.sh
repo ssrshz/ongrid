@@ -177,6 +177,17 @@ if [[ -d "$SCRIPT_DIR/edge" ]]; then
     mkdir -p "$INSTALL_DIR/edge"
     cp -rf "$SCRIPT_DIR/edge/." "$INSTALL_DIR/edge/"
     find "$INSTALL_DIR/edge" -maxdepth 1 -name '*.sh' -exec chmod 755 {} \;
+    # Rebuild the ADR-024 one-button upgrade bundle from the loose edge
+    # binaries we just staged. The release tarball no longer double-packs a
+    # pre-built copy (it duplicated these same binaries at ~120 MB of
+    # incompressible payload); nginx serves the reassembled file from /edge/
+    # unchanged. Best-effort: a failure here only disables one-button edge
+    # upgrade until the next install, so warn and continue.
+    _edge_ver=$(tr -d '[:space:]' < "$SCRIPT_DIR/VERSION" 2>/dev/null || true)
+    if [[ -x "$INSTALL_DIR/edge/build-edge-bundle.sh" && -n "$_edge_ver" ]]; then
+        "$INSTALL_DIR/edge/build-edge-bundle.sh" "$INSTALL_DIR/edge" "$_edge_ver" linux-amd64 \
+            || log_warn "edge upgrade bundle rebuild failed; one-button edge upgrade disabled until next install"
+    fi
 fi
 
 # ---------- host data dirs (bind-mount targets) ----------

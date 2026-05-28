@@ -274,6 +274,13 @@ if [[ -d "$SCRIPT_DIR/edge" ]]; then
     mkdir -p "$INSTALL_DIR/edge"
     cp -rf "$SCRIPT_DIR/edge/." "$INSTALL_DIR/edge/"
     find "$INSTALL_DIR/edge" -maxdepth 1 -name '*.sh' -exec chmod 755 {} \;
+    # Reassemble the ADR-024 one-button upgrade bundle from the loose edge
+    # binaries (no longer double-packed in the tarball — see install.sh /
+    # deploy/install/edge/build-edge-bundle.sh). Best-effort; warn on failure.
+    if [[ -x "$INSTALL_DIR/edge/build-edge-bundle.sh" && -n "$NEW_VERSION" ]]; then
+        "$INSTALL_DIR/edge/build-edge-bundle.sh" "$INSTALL_DIR/edge" "$NEW_VERSION" linux-amd64 \
+            || log_warn "edge upgrade bundle rebuild failed; one-button edge upgrade unavailable until next upgrade"
+    fi
 fi
 
 # Load new ongrid (manager) and frontier (broker) images. Both ship in the
@@ -425,7 +432,11 @@ if [[ $HEALTH_OK -eq 1 ]]; then
 
     # (3) Cap release tarballs in $INSTALL_DIR — keep the two newest
     # (so operators can roll back one version) and drop the rest.
-    ls -1t "$INSTALL_DIR"/ongrid-v*-linux-amd64.tar.gz 2>/dev/null \
+    # Match both the legacy .tar.gz and the current .tar.xz (release packages
+    # switched to xz) so upgrades from a pre-xz install still prune old gz
+    # tarballs. The two explicit globs avoid .tar.* also matching .sha256.
+    ls -1t "$INSTALL_DIR"/ongrid-v*-linux-amd64.tar.gz \
+           "$INSTALL_DIR"/ongrid-v*-linux-amd64.tar.xz 2>/dev/null \
         | tail -n +3 \
         | while read -r f; do
             rm -f "$f" "${f}.sha256"

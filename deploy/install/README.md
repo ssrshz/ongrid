@@ -1,6 +1,6 @@
 # ongrid 部署手册
 
-本目录随 `ongrid-<ver>.tar.gz` 发布包一同提供，供运维同学在目标主机（VPS / 裸金属服务器）上完成 ongrid 云端的安装、升级和卸载。
+本目录随 `ongrid-<ver>.tar.xz` 发布包一同提供，供运维同学在目标主机（VPS / 裸金属服务器）上完成 ongrid 云端的安装、升级和卸载。
 
 ## 要求
 
@@ -36,11 +36,11 @@ systemd 形态详细看 `systemd/README.md`。
 
 ```bash
 # 1. 把发布包上传到目标主机
-scp ongrid-v0.1.0.tar.gz user@vps:~/
+scp ongrid-v0.1.0.tar.xz user@vps:~/
 
 # 2. 登录目标主机并解压
 ssh user@vps
-tar xzf ongrid-v0.1.0.tar.gz
+tar xf ongrid-v0.1.0.tar.xz
 cd ongrid-v0.1.0
 
 # 3. （可选）先编辑 .env.example，自定义端口或 OpenAI key
@@ -75,9 +75,9 @@ sudo ./install.sh
 新版本发布包同样包含 `upgrade.sh`：
 
 ```bash
-scp ongrid-v0.2.0.tar.gz user@vps:~/
+scp ongrid-v0.2.0.tar.xz user@vps:~/
 ssh user@vps
-tar xzf ongrid-v0.2.0.tar.gz
+tar xf ongrid-v0.2.0.tar.xz
 cd ongrid-v0.2.0
 sudo ./upgrade.sh
 ```
