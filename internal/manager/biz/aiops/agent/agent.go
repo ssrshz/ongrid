@@ -220,7 +220,7 @@ func (a *Agent) SetMentionResolver(r MentionResolver) { a.resolver = r }
 // zero-value Config and get sane behaviour.
 func New(llmClient llm.Client, toolsReg *tools.Registry, sessions biz.SessionRepo, cfg Config, log *slog.Logger) *Agent {
 	if cfg.Model == "" {
-		cfg.Model = "gpt-4o"
+		cfg.Model = "gpt-5.4"
 	}
 	if cfg.Temperature == 0 {
 		cfg.Temperature = 0.1

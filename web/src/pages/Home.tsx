@@ -172,7 +172,19 @@ export default function HomePage() {
         if (cancelled) return;
         setProviders(cat.providers ?? []);
         if (cat.default && cat.default.provider) {
-          setCatalogDefault({ provider: cat.default.provider, model: cat.default.model || '' });
+          const d: ModelSelection = { provider: cat.default.provider, model: cat.default.model || '' };
+          setCatalogDefault(d);
+          // The server default (default_provider + <provider>_default_model) is
+          // authoritative. A persisted pick can go stale — the default was
+          // changed in Settings, or the settings were reseeded — and would
+          // otherwise pin an outdated model both here and in the launched
+          // session (which inherits the store). Reconcile a stale/absent store
+          // to the server default; an in-session pick still wins (it updates
+          // the store after this mount-time effect has run).
+          const cur = useModelSelection.getState().selected;
+          if (!cur || cur.provider !== d.provider || cur.model !== d.model) {
+            setStoreModel(d);
+          }
         }
       })
       .catch(() => {

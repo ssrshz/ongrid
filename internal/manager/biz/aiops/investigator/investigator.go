@@ -53,7 +53,7 @@ const (
 	defaultQueueDepth   = 100
 	defaultLLMTimeout   = 60 * time.Second
 	defaultUserMsgCap   = 30 * 1024 // ~30KB upper bound for the bundle text
-	defaultModelDefault = "gpt-4o"
+	defaultModelDefault = "gpt-5.4"
 )
 
 // systemPrompt is the fixed system prompt sent on every investigation.

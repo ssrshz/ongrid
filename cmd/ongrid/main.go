@@ -495,7 +495,7 @@ func main() {
 			APIKey:  cfg.OpenAI.APIKey,
 			Model:   firstNonEmpty(cfg.OpenAI.Model, "gpt-5.4"),
 			BaseURL: cfg.OpenAI.BaseURL,
-			Models:  dedupeModels(firstNonEmpty(cfg.OpenAI.Model, "gpt-5.4"), "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-4o"),
+			Models:  dedupeModels(firstNonEmpty(cfg.OpenAI.Model, "gpt-5.4"), "gpt-5.5", "gpt-5.4", "gpt-5.4-mini"),
 		})
 	}
 	if cfg.LLM.Anthropic.APIKey != "" {
@@ -590,7 +590,7 @@ func main() {
 		key  string
 		list []string
 	}{
-		{settingmodel.KeyOpenAIModels, dedupeModels(firstNonEmpty(cfg.OpenAI.Model, "gpt-5.4"), "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-4o")},
+		{settingmodel.KeyOpenAIModels, dedupeModels(firstNonEmpty(cfg.OpenAI.Model, "gpt-5.4"), "gpt-5.5", "gpt-5.4", "gpt-5.4-mini")},
 		{settingmodel.KeyAnthropicModels, cfg.LLM.Anthropic.Models},
 		{settingmodel.KeyZhipuModels, cfg.LLM.Zhipu.Models},
 		{settingmodel.KeyGeminiModels, cfg.LLM.Gemini.Models},
@@ -620,7 +620,7 @@ func main() {
 			APIKey:  cfg.OpenAI.APIKey,
 			Model:   firstNonEmpty(cfg.OpenAI.Model, "gpt-5.4"),
 			BaseURL: cfg.OpenAI.BaseURL,
-			Models:  dedupeModels(firstNonEmpty(cfg.OpenAI.Model, "gpt-5.4"), "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-4o"),
+			Models:  dedupeModels(firstNonEmpty(cfg.OpenAI.Model, "gpt-5.4"), "gpt-5.5", "gpt-5.4", "gpt-5.4-mini"),
 		},
 		settingmodel.LLMProviderAnthropic: {
 			Label:   "Anthropic",
