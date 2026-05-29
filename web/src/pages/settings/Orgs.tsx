@@ -193,6 +193,20 @@ export default function SettingsOrgs() {
 
   const isDefaultOrg = (o: Org | null) => !!o && o.name === DEFAULT_ORG_NAME;
 
+  // The seed org's name + description live in the DB as Chinese sentinels
+  // (the name is matched verbatim by the backend, so it can't be changed).
+  // Localize them at display time so English mode isn't stuck with Chinese;
+  // a renamed org no longer matches DEFAULT_ORG_NAME and shows its own values.
+  const orgDisplayName = (o: Org) =>
+    isDefaultOrg(o) ? tr('默认组织', 'Default organization') : o.name;
+  const orgDisplayDesc = (o: Org) =>
+    isDefaultOrg(o)
+      ? tr(
+          '首次部署的默认组织，所有现有用户自动加入。可以保留或重命名。',
+          'The default organization created on first deploy; all existing users join automatically. Keep it or rename it.',
+        )
+      : o.description;
+
   // ---------- handlers --------
 
   const onOrgCreated = (o: Org) => {
@@ -336,16 +350,16 @@ export default function SettingsOrgs() {
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
-                          <span className="truncate text-[13px] font-medium">{o.name}</span>
+                          <span className="truncate text-[13px] font-medium">{orgDisplayName(o)}</span>
                           {isDefaultOrg(o) && (
                             <Chip dense tone="info">
                               {tr('默认', 'Default')}
                             </Chip>
                           )}
                         </div>
-                        {o.description && (
+                        {orgDisplayDesc(o) && (
                           <div className="mt-0.5 line-clamp-1 text-[11px] text-zinc-500">
-                            {o.description}
+                            {orgDisplayDesc(o)}
                           </div>
                         )}
                       </div>
@@ -371,11 +385,11 @@ export default function SettingsOrgs() {
               <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-800/60 px-4 py-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <h2 className="truncate text-sm font-semibold text-zinc-100">{selected.name}</h2>
+                    <h2 className="truncate text-sm font-semibold text-zinc-100">{orgDisplayName(selected)}</h2>
                     {isDefaultOrg(selected) && <Chip tone="info">{tr('默认组织', 'Default org')}</Chip>}
                   </div>
                   <div className="mt-0.5 text-[11px] text-zinc-500">
-                    {selected.description || <span className="text-zinc-600">{tr('（无描述）', '(no description)')}</span>}
+                    {orgDisplayDesc(selected) || <span className="text-zinc-600">{tr('（无描述）', '(no description)')}</span>}
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-1.5">

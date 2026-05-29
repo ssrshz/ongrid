@@ -509,7 +509,17 @@ if [[ $HEALTH_OK -eq 0 ]]; then
 fi
 
 # ---------- detect host address for banner ----------
-HOST_HINT="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo localhost)"
+# Prefer the host from ONGRID_PUBLIC_URL (the address edges actually use);
+# otherwise the LAN/egress IP. `hostname -f` is a last resort — stock cloud
+# images often return a useless 'localhost.localdomain' that no one can reach.
+HOST_HINT="$(printf '%s' "${ONGRID_PUBLIC_URL:-}" | sed -E 's#^[a-zA-Z]+://##; s#[:/].*$##')"
+if [[ -z "$HOST_HINT" || "$HOST_HINT" == localhost* ]]; then
+    HOST_HINT="$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -Ev '^(127\.|$)' | head -1 || true)"
+fi
+if [[ -z "$HOST_HINT" ]]; then
+    HOST_HINT="$(ip route get 8.8.8.8 2>/dev/null | awk '/src/{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}' || true)"
+fi
+[[ -z "$HOST_HINT" ]] && HOST_HINT=localhost
 
 # ---------- banner ----------
 echo ""
