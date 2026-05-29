@@ -1363,14 +1363,15 @@ function LogsSpecForm({
   onChange(next: Record<string, unknown>): void;
 }) {
   const { tr } = useI18n();
-  // Default to file-only sources for new edges. journald is opt-in
-  // (systemd-only host coverage, doesn't see container/user-mode logs,
-  // noisy on most distros). The render template also defaults
-  // enable_journald=false so existing edges with no setting are
-  // unchanged.
+  // journald is the default source (systemd-journald is universal on
+  // systemd hosts, self-rotating, and tags each entry with its `unit` so
+  // services are cleanly separable). Mirrors the render template default
+  // (enable_journald true unless explicitly set false) — so an unset spec
+  // shows the box checked. Operators opt out (→ syslog file fallback) or
+  // add file_paths for app-specific logs.
   const journaldUnits = asStringArray(draft.journald_units);
   const filePaths = asStringArray(draft.file_paths);
-  const enableJournald = draft.enable_journald === true;
+  const enableJournald = draft.enable_journald !== false;
   const extraLabels = asStringMap(draft.extra_labels);
   const labelEntries = Object.entries(extraLabels).sort(([a], [b]) => a.localeCompare(b));
 
@@ -1391,8 +1392,8 @@ function LogsSpecForm({
         values={filePaths}
         onChange={(next) => onChange({ ...draft, file_paths: next })}
         hint={tr(
-          '文件 tail glob；promtail static_configs.__path__。新建时建议预填 /var/log/syslog 与 /var/log/messages，覆盖大部分 distro 的系统日志。',
-          'File tail glob (promtail static_configs.__path__). For new edges, pre-fill /var/log/syslog and /var/log/messages to cover most distros.',
+          '应用专属日志文件的 tail glob（promtail __path__）。系统日志默认走下方 journald，不必在此填 /var/log/syslog；这里留给 nginx access、应用自有日志文件等。',
+          'Tail glob for app-specific log files (promtail __path__). System logs come from journald (on by default below) — no need to add /var/log/syslog here; use this for nginx access logs, app log files, etc.',
         )}
       />
       <label className="flex items-start gap-2 rounded-md border border-zinc-800 bg-zinc-950/40 p-3 text-xs text-zinc-300">
@@ -1403,9 +1404,9 @@ function LogsSpecForm({
           className="mt-0.5 h-3.5 w-3.5 rounded border-zinc-600 bg-zinc-900 accent-emerald-500"
         />
         <span>
-          <span className="block font-medium text-zinc-100">{tr('同时采集 journald (systemd 单元日志)', 'Also collect journald (systemd unit logs)')}</span>
+          <span className="block font-medium text-zinc-100">{tr('采集 journald (systemd 单元日志) — 默认开', 'Collect journald (systemd unit logs) — on by default')}</span>
           <span className="mt-0.5 block text-[11px] text-zinc-500">
-            {tr('采集 systemd 单元日志（PRIORITY / _SYSTEMD_UNIT）。仅 systemd 管理的服务可见，容器/用户态进程不在内。', 'Collects systemd unit logs (PRIORITY / _SYSTEMD_UNIT). Only systemd-managed services are visible — container / user-mode processes are not included.')}
+            {tr('默认日志源:每条按 unit 标签区分服务,自带轮转,systemd 系普遍可用。关掉则回退 tail /var/log/syslog。', 'Default log source: each entry is tagged by `unit` so services are separable, self-rotating, available on all systemd hosts. Turn off to fall back to tailing /var/log/syslog.')}
           </span>
         </span>
       </label>

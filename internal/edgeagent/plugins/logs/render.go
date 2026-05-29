@@ -65,12 +65,13 @@ scrape_configs:
   - job_name: journald
     journal:
       max_age: 12h
-      path: /var/log/journal
       labels:
         ongrid_source: "journald"
     relabel_configs:
       - source_labels: ['__journal__systemd_unit']
         target_label:  'unit'
+      - source_labels: ['__journal_syslog_identifier']
+        target_label:  'identifier'
 {{- if .JournaldUnits }}
       - source_labels: ['__journal__systemd_unit']
         regex:         '{{ .JournaldUnitsRegex }}'
@@ -93,11 +94,11 @@ scrape_configs:
 
 // render builds promtail.yaml bytes from a PluginConfig. Spec keys:
 //
-//	enable_journald : bool (default false — opt-in only; journald only
-//	                          covers systemd-managed services and is noisy
-//	                          on most distros)
+//	enable_journald : bool (default TRUE — systemd-journald is universal on
+//	                          systemd hosts and self-rotating; set false to
+//	                          opt out, which falls back to syslog file tail)
 //	journald_units : []string (default all units when journald enabled)
-//	file_paths : []string (default empty)
+//	file_paths : []string (default empty; add app-specific log files here)
 //	extra_labels : map[string]string (allow-list policed by manager;
 func render(cfg plugins.PluginConfig) ([]byte, error) {
 	if cfg.Endpoint == "" {
@@ -107,10 +108,14 @@ func render(cfg plugins.PluginConfig) ([]byte, error) {
 		return nil, fmt.Errorf("logs plugin: device_id required (set ONGRID_EDGE_ID)")
 	}
 
-	// File-only is the universal default: journald is only available on
-	// systemd hosts, doesn't see container/user-mode logs, and is noisy.
-	// Operators opt in by setting spec.enable_journald=true (UI toggle).
-	enableJournald := false
+	// Journald is the universal default: systemd-journald is always running
+	// on systemd hosts, whereas rsyslog / /var/log/syslog is NOT guaranteed
+	// (absent on Arch, Alpine, minimal cloud images, containers). It
+	// self-rotates (journald.conf SystemMaxUse) and tags every entry with
+	// its systemd unit, so services are cleanly separable by the `unit`
+	// label. Operators opt out with spec.enable_journald=false, or add
+	// file_paths for app-specific log files (e.g. nginx access logs).
+	enableJournald := true
 	if v, ok := cfg.Spec["enable_journald"]; ok {
 		if b, ok := v.(bool); ok {
 			enableJournald = b
@@ -128,11 +133,11 @@ func render(cfg plugins.PluginConfig) ([]byte, error) {
 
 	units := stringSlice(cfg.Spec, "journald_units")
 	filePaths := stringSlice(cfg.Spec, "file_paths")
-	// Default to the universal syslog files when the operator hasn't
-	// explicitly configured any source (and journald is opt-in off).
-	// Without this a freshly-enabled logs plugin would emit a
-	// promtail config with zero scrape jobs and the operator would
-	// see nothing in Loki — confusing.
+	// Fallback only when the operator explicitly turned journald OFF and
+	// set no file paths: tail the universal syslog files so the plugin
+	// still emits at least one scrape job (a config with zero jobs = silent
+	// empty Loki, which reads as "RAG/logs broke"). With journald on by
+	// default this branch is normally skipped.
 	if len(filePaths) == 0 && !enableJournald {
 		filePaths = []string{"/var/log/syslog", "/var/log/messages"}
 	}

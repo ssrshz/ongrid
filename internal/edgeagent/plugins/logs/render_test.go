@@ -36,6 +36,7 @@ func TestRenderHappyPath(t *testing.T) {
 		`service: "edge"`,
 		`env: "test"`,
 		"job_name: journald",
+		"target_label:  'identifier'", // journald syslog_identifier → label for non-unit entries
 		"job_name: 'file-var-log-syslog'",
 		"job_name: 'file-var-log-auth-log'",
 		"__path__:      '/var/log/syslog'",
@@ -108,10 +109,11 @@ func TestRenderSingleClient(t *testing.T) {
 	}
 }
 
-// TestRenderJournaldOptIn: journald is opt-in. Default render (no
-// enable_journald in spec) must NOT emit the journald scrape block;
-// explicit enable_journald=true reinstates it.
-func TestRenderJournaldOptIn(t *testing.T) {
+// TestRenderJournaldDefaultOn: journald is the default source. Default
+// render (no enable_journald in spec) MUST emit the journald scrape
+// block; explicit enable_journald=false removes it (the operator falls
+// back to file/syslog tail).
+func TestRenderJournaldDefaultOn(t *testing.T) {
 	base := plugins.PluginConfig{
 		Enabled:  true,
 		EdgeID:   1,
@@ -124,17 +126,17 @@ func TestRenderJournaldOptIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if strings.Contains(string(out), "job_name: journald") {
-		t.Errorf("journald should be opt-in (default off):\n%s", string(out))
+	if !strings.Contains(string(out), "job_name: journald") {
+		t.Errorf("journald should be on by default (unset spec):\n%s", string(out))
 	}
 
-	base.Spec["enable_journald"] = true
+	base.Spec["enable_journald"] = false
 	out, err = render(base)
 	if err != nil {
-		t.Fatalf("render with journald on: %v", err)
+		t.Fatalf("render with journald off: %v", err)
 	}
-	if !strings.Contains(string(out), "job_name: journald") {
-		t.Errorf("enable_journald=true must add the journald scrape block:\n%s", string(out))
+	if strings.Contains(string(out), "job_name: journald") {
+		t.Errorf("enable_journald=false must remove the journald scrape block:\n%s", string(out))
 	}
 }
 
