@@ -369,8 +369,11 @@ function IMAppEditor({
               disabled={!isCreate}
               className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 focus:border-zinc-600 focus:outline-none disabled:opacity-50"
             >
-              <option value="feishu">飞书 / Larksuite</option>
-              <option value="dingtalk">钉钉 / DingTalk</option>
+              {/* locale-aware: drop the other-language label so ZH sees
+                  "飞书" and EN sees "Larksuite". Telegram / Slack don't
+                  have a Chinese name so they render the same either way. */}
+              <option value="feishu">{tr('飞书', 'Larksuite')}</option>
+              <option value="dingtalk">{tr('钉钉', 'DingTalk')}</option>
               <option value="telegram">Telegram</option>
               <option value="slack">Slack</option>
             </select>
