@@ -72,22 +72,29 @@ services:
       ONGRID_ADMIN_EMAIL: ${ONGRID_ADMIN_EMAIL:-}
       ONGRID_ADMIN_PASSWORD: ${ONGRID_ADMIN_PASSWORD:-}
       ONGRID_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      ONGRID_OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      # Model defaults intentionally NOT hard-coded here — the Go side
+      # (cmd/ongrid/main.go firstNonEmpty fallbacks) owns the current
+      # defaults so a single code edit keeps the seed list, the env
+      # resolver defaults, and what gets pushed into compose all in sync.
+      # Hard-coding here is how gpt-4o + claude-3-5-sonnet + glm-4-plus +
+      # gemini-1.5-pro + deepseek-chat + moonshot-v1-8k leaked back into
+      # fresh installs after the v0.7.155/156 default refresh.
+      ONGRID_OPENAI_MODEL: ${OPENAI_MODEL:-}
       ONGRID_OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       # Other LLM providers — operators set whichever they have a key
       # for. Default provider picks which one chat dispatches to.
       ONGRID_ZHIPU_API_KEY: ${ONGRID_ZHIPU_API_KEY:-}
-      ONGRID_ZHIPU_MODEL: ${ONGRID_ZHIPU_MODEL:-glm-4-plus}
+      ONGRID_ZHIPU_MODEL: ${ONGRID_ZHIPU_MODEL:-}
       ONGRID_ZHIPU_BASE_URL: ${ONGRID_ZHIPU_BASE_URL:-}
       ONGRID_ANTHROPIC_API_KEY: ${ONGRID_ANTHROPIC_API_KEY:-}
-      ONGRID_ANTHROPIC_MODEL: ${ONGRID_ANTHROPIC_MODEL:-claude-3-5-sonnet-latest}
+      ONGRID_ANTHROPIC_MODEL: ${ONGRID_ANTHROPIC_MODEL:-}
       ONGRID_ANTHROPIC_BASE_URL: ${ONGRID_ANTHROPIC_BASE_URL:-}
       ONGRID_GEMINI_API_KEY: ${ONGRID_GEMINI_API_KEY:-}
-      ONGRID_GEMINI_MODEL: ${ONGRID_GEMINI_MODEL:-gemini-1.5-pro}
+      ONGRID_GEMINI_MODEL: ${ONGRID_GEMINI_MODEL:-}
       ONGRID_DEEPSEEK_API_KEY: ${ONGRID_DEEPSEEK_API_KEY:-}
-      ONGRID_DEEPSEEK_MODEL: ${ONGRID_DEEPSEEK_MODEL:-deepseek-chat}
+      ONGRID_DEEPSEEK_MODEL: ${ONGRID_DEEPSEEK_MODEL:-}
       ONGRID_KIMI_API_KEY: ${ONGRID_KIMI_API_KEY:-}
-      ONGRID_KIMI_MODEL: ${ONGRID_KIMI_MODEL:-moonshot-v1-8k}
+      ONGRID_KIMI_MODEL: ${ONGRID_KIMI_MODEL:-}
       ONGRID_LLM_DEFAULT_PROVIDER: ${ONGRID_LLM_DEFAULT_PROVIDER:-}
       # Auto root-cause analysis (HLD-011). When true + an LLM is
       # configured, every incident at/above ONGRID_INVESTIGATOR_MIN_SEVERITY
