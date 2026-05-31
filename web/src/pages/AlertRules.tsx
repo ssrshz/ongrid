@@ -42,6 +42,8 @@ import {
   setRuleEnabled,
   updateRule,
   localizedRuleName,
+  getAlertRuntimeInfo,
+  type AlertRuntimeInfo,
   type Channel,
   type Rule,
   type RuleCondition,
@@ -76,6 +78,17 @@ const SOURCE_PILL_STYLE: Record<SignalSource, string> = {
   log: 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/30',
   trace: 'bg-violet-500/10 text-violet-300 ring-violet-500/30',
 };
+
+// humanDur compacts a duration-in-seconds to a chip-friendly string.
+// 300 → "5min"; 600 → "10min"; 30 → "30s"; 3600 → "1h"; 5400 → "1.5h".
+function humanDur(sec: number): string {
+  if (sec <= 0) return '0';
+  if (sec % 3600 === 0) return `${sec / 3600}h`;
+  if (sec >= 3600) return `${(sec / 3600).toFixed(1)}h`;
+  if (sec % 60 === 0) return `${sec / 60}min`;
+  if (sec >= 60) return `${(sec / 60).toFixed(1)}min`;
+  return `${sec}s`;
+}
 
 function describeKind(kind: RuleKind | string): {
   meta?: RuleKindMeta;
@@ -139,6 +152,17 @@ export default function AlertRulesPage() {
   } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Rule | null>(null);
   const [showPresets, setShowPresets] = useState(false);
+  // Runtime cadence (evaluator + cooldown) — global, per-deployment.
+  // Surfaced as a chip in the header so the operator knows how often
+  // each rule will run / re-notify without having to read env vars.
+  const [runtime, setRuntime] = useState<AlertRuntimeInfo | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void getAlertRuntimeInfo()
+      .then((r) => { if (!cancelled) setRuntime(r); })
+      .catch(() => { /* non-fatal: chip just stays hidden */ });
+    return () => { cancelled = true; };
+  }, []);
 
   const fetchRules = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true);
@@ -194,6 +218,20 @@ export default function AlertRulesPage() {
                 <span className="ml-1 inline-flex items-center rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300 ring-1 ring-inset ring-zinc-700">
                   {tr(`自定义 ${stats.total - stats.builtin}`, `${stats.total - stats.builtin} custom`)}
                 </span>
+                {runtime && runtime.evaluator_interval_seconds > 0 && (
+                  <span
+                    className="ml-1 inline-flex items-center gap-1 rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-200 ring-1 ring-inset ring-sky-500/30"
+                    title={tr(
+                      `evaluator 每 ${humanDur(runtime.evaluator_interval_seconds)} 跑一次全量规则;通知 cooldown ${humanDur(runtime.notify_cooldown_seconds)}。出厂默认 5min / 10min,可由 ONGRID_ALERT_EVAL_INTERVAL / ONGRID_ALERT_COOLDOWN 覆盖。`,
+                      `Evaluator runs every ${humanDur(runtime.evaluator_interval_seconds)}; notification cooldown ${humanDur(runtime.notify_cooldown_seconds)}. Factory defaults 5min / 10min, override via ONGRID_ALERT_EVAL_INTERVAL / ONGRID_ALERT_COOLDOWN.`,
+                    )}
+                  >
+                    ⏱ {tr(
+                      `每 ${humanDur(runtime.evaluator_interval_seconds)} 评估 · 通知 cooldown ${humanDur(runtime.notify_cooldown_seconds)}`,
+                      `Eval ${humanDur(runtime.evaluator_interval_seconds)} · Notify cd ${humanDur(runtime.notify_cooldown_seconds)}`,
+                    )}
+                  </span>
+                )}
               </p>
             </div>
             <div className="flex gap-2">

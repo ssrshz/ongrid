@@ -501,3 +501,15 @@ export function deleteChannel(id: number) {
 export function testChannel(id: number) {
   return request<ChannelTestResult>('POST', `/notification-channels/${id}/test`);
 }
+
+// Runtime info exposed by the manager so the SPA can show "evaluator
+// runs every N min" / "notify cooldown N min" without the operator
+// having to read env vars. Per-deployment, not per-rule.
+export type AlertRuntimeInfo = {
+  evaluator_interval_seconds: number;
+  notify_cooldown_seconds: number;
+};
+
+export function getAlertRuntimeInfo() {
+  return request<AlertRuntimeInfo>('GET', '/alerts/runtime-info');
+}

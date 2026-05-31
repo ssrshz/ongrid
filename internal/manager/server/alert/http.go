@@ -109,6 +109,13 @@ type Handler struct {
 	rules                 RuleService
 	investigations        InvestigationReader
 	investigationsTrigger InvestigationTrigger
+	// runtime knobs exposed as informational metadata via
+	// GET /v1/alerts/runtime-info — kept on the handler so the SPA can
+	// surface "this rule evaluates every 5min" without the operator
+	// having to read the env. Default zero values yield 0 in the API,
+	// which the SPA treats as "unknown / not surfaced".
+	evaluatorInterval time.Duration
+	notifyCooldown    time.Duration
 }
 
 // NewHandler accepts the three services (or one combined Service satisfying
@@ -116,6 +123,16 @@ type Handler struct {
 // excludes rule endpoints.
 func NewHandler(incidents IncidentService, channels ChannelService, rules RuleService) *Handler {
 	return &Handler{incidents: incidents, channels: channels, rules: rules}
+}
+
+// WithRuntime wires the alert pipeline's runtime knobs (evaluator tick
+// interval + notification cooldown) so GET /v1/alerts/runtime-info can
+// report them. Optional: a nil call leaves them at 0 and the API
+// reports zero-valued fields, which the SPA treats as "unknown".
+func (h *Handler) WithRuntime(evaluatorInterval, notifyCooldown time.Duration) *Handler {
+	h.evaluatorInterval = evaluatorInterval
+	h.notifyCooldown = notifyCooldown
+	return h
 }
 
 // WithInvestigations wires the read-only investigation reader used by
@@ -143,6 +160,7 @@ func (h *Handler) Register(r chi.Router) {
 	r.Post("/v1/alerts/incidents/{id}/ack", h.ackIncident)
 	r.Post("/v1/alerts/incidents/{id}/resolve", h.resolveIncident)
 	r.Post("/v1/alerts/incidents/{id}/silence", h.silenceIncident)
+	r.Get("/v1/alerts/runtime-info", h.getRuntimeInfo)
 
 	r.Get("/v1/notification-channels", h.listChannels)
 	r.Get("/v1/notification-channels/{id}", h.getChannel)
@@ -967,6 +985,24 @@ func localeFromRequest(r *http.Request) string {
 	default:
 		return ""
 	}
+}
+
+// getRuntimeInfo exposes the alert pipeline's runtime cadence knobs so
+// the SPA can show operators "this rule evaluates every N minutes" without
+// the operator having to read env vars. Values come from env at startup
+// (ONGRID_ALERT_EVAL_INTERVAL / ONGRID_ALERT_COOLDOWN) — they're per-
+// deployment, not per-rule, so the SPA shows them as a global banner /
+// chip rather than per-rule editable fields.
+func (h *Handler) getRuntimeInfo(w http.ResponseWriter, r *http.Request) {
+	if _, ok := callerFromRequest(r); !ok {
+		writeErr(w, errs.ErrUnauthorized)
+		return
+	}
+	out := map[string]any{
+		"evaluator_interval_seconds": int64(h.evaluatorInterval / time.Second),
+		"notify_cooldown_seconds":    int64(h.notifyCooldown / time.Second),
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func errSlug(err error) string {

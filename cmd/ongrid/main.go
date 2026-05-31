@@ -1574,7 +1574,8 @@ func main() {
 		alertSvc.SetPreviewDeps(previewDeps)
 	}
 	alertHandler := managerserveralert.NewHandler(alertSvc, alertSvc, alertSvc).
-		WithInvestigations(manageralertdata.NewInvestigationRepo(db))
+		WithInvestigations(manageralertdata.NewInvestigationRepo(db)).
+		WithRuntime(cfg.Alert.EvaluatorInterval, cfg.Alert.Cooldown)
 	if rcaInvConcrete != nil {
 		alertHandler.WithInvestigationTrigger(rcaInvConcrete)
 	}
