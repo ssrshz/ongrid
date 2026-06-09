@@ -43,10 +43,11 @@
 
 ## Instalación
 
-Descarga la última release, descomprímela y ejecuta el instalador (Ubuntu 22.04+, Debian 12+, RHEL/Rocky 9):
+Descarga la última release para la arquitectura de tu servidor (`linux-amd64` o `linux-arm64`), descomprímela y ejecuta el instalador (Ubuntu 22.04+, Debian 12+, RHEL/Rocky 9):
 
 ```bash
 # 1. Descarga la última release (Ubuntu 22.04+, Debian 12+, RHEL/Rocky 9)
+#    Servidores ARM64: reemplaza linux-amd64 por linux-arm64.
 wget https://github.com/ongridio/ongrid/releases/download/v0.8.3/ongrid-v0.8.3-linux-amd64.tar.xz
 
 # 2. Descomprimir
@@ -59,6 +60,7 @@ sudo ./install.sh
 **🇨🇳 China continental** — si GitHub va lento, descarga el paso 1 desde el mirror CDN (el resto es igual):
 
 ```bash
+# Servidores ARM64: reemplaza linux-amd64 por linux-arm64.
 wget https://ongrid.cloud/dl/ongrid-v0.8.3-linux-amd64.tar.xz
 ```
 
