@@ -42,10 +42,10 @@ import { useAuth } from '@/store/auth';
 import { useUi } from '@/store/ui';
 import { useIncidentBadge } from '@/store/incidentBadge';
 import { useMe, usePermissions } from '@/store/me';
-import { hasGrafanaDrilldownConfig } from '@/lib/drilldown';
 import { useChatSessions, invalidateChatSessions } from '@/store/chatSessions';
 import { deleteSession, renameSession, type ChatSession } from '@/api/chat';
 import { listEdges, type EdgeRole } from '@/api/edges';
+import { getManagerVersion } from '@/api/version';
 import { onDevicesChanged } from '@/lib/events';
 
 export function Sidebar() {
@@ -69,6 +69,22 @@ export function Sidebar() {
   const [showAllSessions, setShowAllSessions] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ChatSession | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [managerVersion, setManagerVersion] = useState('');
+  const managerVersionLabel = managerVersion.trim();
+
+  useEffect(() => {
+    let cancelled = false;
+    void getManagerVersion()
+      .then((r) => {
+        if (!cancelled) setManagerVersion((r.manager_version || '').trim());
+      })
+      .catch(() => {
+        if (!cancelled) setManagerVersion('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Roles actually present in the user's fleet — drives which 设备 sub-
   // items appear. We don't render a role link for a role with 0 devices,
@@ -120,7 +136,6 @@ export function Sidebar() {
 
   const visibleSessions = showAllSessions ? sessions.slice(0, 10) : sessions.slice(0, 5);
   const hasMoreSessions = sessions.length > 5;
-  const grafanaReady = hasGrafanaDrilldownConfig();
 
   useEffect(() => {
     if (!userMenuOpen) return;
@@ -240,7 +255,11 @@ export function Sidebar() {
           type="button"
           onClick={toggleSidebar}
           aria-label={tr('展开侧边栏', 'Expand sidebar')}
-          title={tr('Ongrid · 点击展开', 'Ongrid · click to expand')}
+          title={
+            managerVersionLabel
+              ? tr(`Ongrid · 当前版本 ${managerVersionLabel} · 点击展开`, `Ongrid · ${managerVersionLabel} · click to expand`)
+              : tr('Ongrid · 点击展开', 'Ongrid · click to expand')
+          }
           className="rounded-lg p-1 hover:bg-zinc-800/60"
         >
           <OngridLogo size={34} />
@@ -340,6 +359,15 @@ export function Sidebar() {
       >
         <OngridLogo size={32} className="-mr-0.5" />
         <span className="text-[16px] font-semibold tracking-tight text-zinc-100">Ongrid</span>
+        {managerVersionLabel ? (
+          <span
+            className="ml-1 max-w-[78px] truncate rounded-full border border-zinc-700/70 bg-zinc-800/60 px-1.5 py-0.5 text-[10px] font-medium leading-none text-zinc-400"
+            title={tr(`当前版本：${managerVersionLabel}`, `Current version: ${managerVersionLabel}`)}
+            aria-label={tr(`当前版本：${managerVersionLabel}`, `Current version: ${managerVersionLabel}`)}
+          >
+            {managerVersionLabel}
+          </span>
+        ) : null}
       </Link>
 
       {/* user / collapse / bell */}
