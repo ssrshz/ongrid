@@ -182,7 +182,12 @@ func (uc *PluginConfigUC) Set(ctx context.Context, edgeID uint64, plugin string,
 	if !model.IsKnownPluginName(plugin) {
 		return nil, fmt.Errorf("%w: unknown plugin %q", errs.ErrInvalid, plugin)
 	}
-	if plugin == model.PluginNameDatabaseMetrics {
+	switch plugin {
+	case model.PluginNameCustomMetrics:
+		if err := validateCustomMetricsSpec(in.Spec); err != nil {
+			return nil, err
+		}
+	case model.PluginNameDatabaseMetrics:
 		spec, err := uc.prepareDatabaseMetricsSpec(ctx, edgeID, in.Spec)
 		if err != nil {
 			return nil, err

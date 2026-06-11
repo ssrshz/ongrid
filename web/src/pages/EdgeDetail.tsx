@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   CartesianGrid,
@@ -838,7 +838,7 @@ function PluginsTab({ edgeId }: { edgeId: number }) {
   // expanded keeps which plugin's edit form is open. Only one open at
   // a time keeps the page short.
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   const fetchRows = useCallback(async () => {
     setLoading(true);
@@ -857,12 +857,12 @@ function PluginsTab({ edgeId }: { edgeId: number }) {
     void fetchRows();
   }, [fetchRows]);
 
-  // Auto-clear toast after 3s so it doesn't pile up across saves.
+  // Auto-clear save feedback so repeated saves don't pile up.
   useEffect(() => {
-    if (!toast) return;
-    const id = window.setTimeout(() => setToast(null), 3000);
+    if (!saveNotice) return;
+    const id = window.setTimeout(() => setSaveNotice(null), 4000);
     return () => window.clearTimeout(id);
-  }, [toast]);
+  }, [saveNotice]);
 
   // saveRow is shared between the toggle + the spec form. We optimistically
   // patch local state so the toggle flip feels instant; on failure we
@@ -870,8 +870,9 @@ function PluginsTab({ edgeId }: { edgeId: number }) {
   const saveRow = async (
     name: string,
     body: { enabled: boolean; spec?: Record<string, unknown> }
-  ) => {
+  ): Promise<PluginRow> => {
     setErr(null);
+    setSaveNotice(null);
     setRows((cur) =>
       cur.map((r) =>
         r.plugin_name === name
@@ -882,10 +883,13 @@ function PluginsTab({ edgeId }: { edgeId: number }) {
     try {
       const updated = await setEdgePlugin(edgeId, name, body);
       setRows((cur) => cur.map((r) => (r.plugin_name === name ? updated : r)));
-      setToast(tr(`✓ 已保存 ${name}，正在推送到 edge`, `✓ Saved ${name}, pushing to edge`));
+      setSaveNotice(tr(`${name} 配置已保存，正在推送到 edge。`, `${name} config saved and is being pushed to the edge.`));
+      return updated;
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : (e as Error).message || tr('保存失败', 'Save failed'));
+      const err = e instanceof ApiError ? e : new Error((e as Error).message || tr('保存失败', 'Save failed'));
+      setErr(err.message);
       void fetchRows();
+      throw err;
     }
   };
 
@@ -901,6 +905,16 @@ function PluginsTab({ edgeId }: { edgeId: number }) {
       {err && (
         <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
           {err}
+        </div>
+      )}
+
+      {saveNotice && (
+        <div
+          role="status"
+          className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300"
+        >
+          <div className="font-medium text-emerald-200">{tr('保存成功', 'Saved')}</div>
+          <div className="mt-0.5">{saveNotice}</div>
         </div>
       )}
 
@@ -947,11 +961,6 @@ function PluginsTab({ edgeId }: { edgeId: number }) {
         </div>
       )}
 
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-30 rounded-lg border border-emerald-700/50 bg-emerald-900/40 px-3 py-2 text-xs text-emerald-200 shadow-lg">
-          {toast}
-        </div>
-      )}
     </div>
   );
 }
@@ -970,8 +979,8 @@ function PluginCard({
   children?: PluginRow[];
   expanded: boolean;
   onToggleExpand(): void;
-  onSave(body: { enabled: boolean; spec?: Record<string, unknown> }): Promise<void>;
-  onSaveChild?(name: string, body: { enabled: boolean; spec?: Record<string, unknown> }): Promise<void>;
+  onSave(body: { enabled: boolean; spec?: Record<string, unknown> }): Promise<PluginRow | void>;
+  onSaveChild?(name: string, body: { enabled: boolean; spec?: Record<string, unknown> }): Promise<PluginRow | void>;
 }) {
   const { tr } = useI18n();
   const meta = pluginMeta(row.plugin_name);
@@ -1002,7 +1011,11 @@ function PluginCard({
           : 'bg-zinc-700/40 text-zinc-400 ring-zinc-600';
 
   const toggle = async () => {
-    await onSave({ enabled: !row.enabled, spec: row.spec });
+    try {
+      await onSave({ enabled: !row.enabled, spec: row.spec });
+    } catch {
+      // saveRow already surfaces the error in the PluginsTab banner.
+    }
   };
 
   return (
@@ -1131,7 +1144,7 @@ function PluginSubCard({
   onSave,
 }: {
   row: PluginRow;
-  onSave(body: { enabled: boolean; spec?: Record<string, unknown> }): Promise<void>;
+  onSave(body: { enabled: boolean; spec?: Record<string, unknown> }): Promise<PluginRow | void>;
 }) {
   const { tr } = useI18n();
   const meta = pluginMeta(row.plugin_name);
@@ -1147,7 +1160,11 @@ function PluginSubCard({
           ? 'bg-amber-500/10 text-amber-300 ring-amber-500/30'
           : 'bg-zinc-700/40 text-zinc-400 ring-zinc-600';
   const toggle = async () => {
-    await onSave({ enabled: !row.enabled, spec: row.spec });
+    try {
+      await onSave({ enabled: !row.enabled, spec: row.spec });
+    } catch {
+      // saveRow already surfaces the error in the PluginsTab banner.
+    }
   };
   return (
     <div className="rounded-lg border border-zinc-800/60 bg-zinc-950/40">
@@ -1237,6 +1254,7 @@ function SourceConfigRow({
   health,
   open,
   onToggle,
+  onRemove,
 }: {
   title: string;
   subtitle?: string;
@@ -1244,15 +1262,16 @@ function SourceConfigRow({
   health?: PluginTargetHealth;
   open: boolean;
   onToggle(): void;
+  onRemove?: () => void;
 }) {
   const { tr } = useI18n();
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-zinc-900/40"
-    >
-      <div className="flex min-w-0 items-center gap-2">
+    <div className="flex w-full items-center justify-between gap-3 hover:bg-zinc-900/40">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
+      >
         {open ? <ChevronDown size={12} className="shrink-0 text-zinc-500" /> : <ChevronRight size={12} className="shrink-0 text-zinc-500" />}
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
@@ -1280,16 +1299,29 @@ function SourceConfigRow({
             </div>
           )}
         </div>
+      </button>
+      <div className="flex shrink-0 items-center gap-2 pr-3">
+        {health && (
+          <div className="text-right text-[10px] text-zinc-500">
+            <div>{tr('样本', 'Samples')}: {health.samples ?? 0}</div>
+            {health.last_success_at && (
+              <div>{tr('成功', 'OK')}: {relativeTime(health.last_success_at)}</div>
+            )}
+          </div>
+        )}
+        {onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-500/30 bg-red-500/10 text-red-300 shadow-sm hover:border-red-500/40 hover:bg-red-500/15 hover:text-red-200 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+            aria-label={tr('移除采集源', 'Remove source')}
+            title={tr('移除采集源', 'Remove source')}
+          >
+            <Trash2 size={15} />
+          </button>
+        )}
       </div>
-      {health && (
-        <div className="shrink-0 text-right text-[10px] text-zinc-500">
-          <div>{tr('样本', 'Samples')}: {health.samples ?? 0}</div>
-          {health.last_success_at && (
-            <div>{tr('成功', 'OK')}: {relativeTime(health.last_success_at)}</div>
-          )}
-        </div>
-      )}
-    </button>
+    </div>
   );
 }
 
@@ -1315,7 +1347,7 @@ function PluginSpecEditor({
   spec: Record<string, unknown>;
   enabled: boolean;
   targetHealth?: PluginTargetHealth[];
-  onSave(body: { enabled: boolean; spec?: Record<string, unknown> }): Promise<void>;
+  onSave(body: { enabled: boolean; spec?: Record<string, unknown> }): Promise<PluginRow | void>;
 }) {
   const { tr } = useI18n();
   // Default to structured form for known plugins; JSON fallback otherwise.
@@ -1331,7 +1363,16 @@ function PluginSpecEditor({
     JSON.stringify(spec ?? {}, null, 2)
   );
   const [jsonErr, setJsonErr] = useState<string | null>(null);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const nextSpec = spec ?? {};
+    setDraft(nextSpec);
+    setJsonText(JSON.stringify(nextSpec, null, 2));
+    setJsonErr(null);
+    setSaveErr(null);
+  }, [name, spec]);
 
   const submit = async () => {
     let payloadSpec: Record<string, unknown>;
@@ -1351,14 +1392,29 @@ function PluginSpecEditor({
     } else {
       payloadSpec = draft;
     }
+    if (name === 'databasemetrics') {
+      payloadSpec = normalizeDatabaseMetricTLSForSave(payloadSpec);
+    }
+    setSaveErr(null);
+    const validationErr = validatePluginSpecBeforeSave(name, payloadSpec, tr);
+    if (validationErr) {
+      setSaveErr(validationErr);
+      return;
+    }
     setSaving(true);
     try {
-      await onSave({ enabled, spec: payloadSpec });
+      const updated = await onSave({ enabled, spec: payloadSpec });
+      const savedSpec = updated?.spec ?? payloadSpec;
       if (name === 'databasemetrics') {
-        const cleanSpec = stripDatabaseMetricCredentials(payloadSpec);
+        const cleanSpec = stripDatabaseMetricCredentials(savedSpec);
         setDraft(cleanSpec);
         setJsonText(JSON.stringify(cleanSpec, null, 2));
+      } else {
+        setDraft(savedSpec);
+        setJsonText(JSON.stringify(savedSpec, null, 2));
       }
+    } catch (e) {
+      setSaveErr(e instanceof ApiError ? e.message : (e as Error).message || tr('保存失败', 'Save failed'));
     } finally {
       setSaving(false);
     }
@@ -1443,6 +1499,11 @@ function PluginSpecEditor({
           {tr('保存后通过 tunnel 推到 edge，supervisor diff 后 reload subprocess', 'On save, pushed to the edge via tunnel; the supervisor diffs and reloads the subprocess')}
         </span>
       </div>
+      {saveErr && (
+        <div className="rounded-md border border-red-500/20 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-300">
+          {saveErr}
+        </div>
+      )}
     </div>
   );
 }
@@ -1456,12 +1517,14 @@ function StringListField({
   hint,
   values,
   placeholder,
+  emptyText,
   onChange,
 }: {
   label: string;
   hint?: string;
   values: string[];
   placeholder?: string;
+  emptyText?: string;
   onChange(next: string[]): void;
 }) {
   const { tr } = useI18n();
@@ -1479,7 +1542,7 @@ function StringListField({
       </div>
       {values.length === 0 && (
         <div className="rounded-md border border-dashed border-zinc-800 px-2 py-2 text-[11px] text-zinc-500">
-          {tr('—（留空表示不抓）', '— (empty means do not collect)')}
+          {emptyText ?? tr('—（留空表示不抓）', '— (empty means do not collect)')}
         </div>
       )}
       <div className="space-y-1.5">
@@ -1687,13 +1750,13 @@ function CustomMetricsSpecForm({
                   health={healthMap[id]}
                   open={open}
                   onToggle={() => setOpenIndex(open ? null : idx)}
+                  onRemove={() => removeTarget(idx)}
                 />
                 {open && (
                   <div className="border-t border-zinc-800 px-3 py-3">
                     <CustomTargetEditor
                       target={target}
                       onChange={(next) => updateTarget(idx, next)}
-                      onRemove={() => removeTarget(idx)}
                     />
                   </div>
                 )}
@@ -1709,11 +1772,9 @@ function CustomMetricsSpecForm({
 function CustomTargetEditor({
   target,
   onChange,
-  onRemove,
 }: {
   target: Record<string, unknown>;
   onChange(next: Record<string, unknown>): void;
-  onRemove(): void;
 }) {
   const { tr } = useI18n();
   const id = typeof target.id === 'string' ? target.id : '';
@@ -1733,14 +1794,6 @@ function CustomTargetEditor({
           />
           {tr('启用', 'Enabled')}
         </label>
-        <button
-          type="button"
-          onClick={onRemove}
-          className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-red-400"
-          aria-label={tr('移除采集源', 'Remove source')}
-        >
-          <Trash2 size={12} />
-        </button>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <SpecInput label="id" value={id} placeholder="service-api" onChange={(v) => setField('id', v)} />
@@ -1785,6 +1838,7 @@ function CustomTargetEditor({
           values={asStringArray(target.label_drop)}
           placeholder="trace_id"
           onChange={(next) => setField('label_drop', next)}
+          emptyText={tr('—（留空表示不删除 label）', '— (empty means no labels are dropped)')}
           hint={tr('采样前删除高基数 label。', 'Drop high-cardinality labels before pushing.')}
         />
         <StringMapField
@@ -1821,6 +1875,253 @@ const DB_TYPE_OPTIONS = [
 
 type DBType = (typeof DB_TYPE_OPTIONS)[number]['id'];
 
+const DB_LABEL_DROP_DEFAULT: Record<DBType, string[]> = {
+  mysql: ['query', 'statement'],
+  postgresql: ['query', 'statement'],
+  redis: [],
+  mongodb: ['collection', 'query'],
+};
+
+const POSTGRES_SSLMODE_OPTIONS = ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'] as const;
+
+type ExporterOption = {
+  id: string;
+  label: string;
+  hintZh: string;
+  hintEn: string;
+  risk?: 'normal' | 'high';
+};
+
+const MYSQL_EXPORTER_DEFAULT_COLLECTORS: string[] = [];
+
+const MYSQL_EXPORTER_COLLECTOR_OPTIONS: ExporterOption[] = [
+  { id: 'slave_status', label: 'slave_status', hintZh: 'SHOW SLAVE STATUS / 复制状态，默认已启用', hintEn: 'SHOW SLAVE STATUS / replication status; enabled by default' },
+  { id: 'slave_hosts', label: 'slave_hosts', hintZh: 'SHOW SLAVE HOSTS，用于复制拓扑', hintEn: 'SHOW SLAVE HOSTS for replication topology' },
+  { id: 'info_schema.replica_host', label: 'info_schema.replica_host', hintZh: 'replica_host_status 复制 host 指标', hintEn: 'replica_host_status replication host metrics' },
+  { id: 'perf_schema.replication_group_members', label: 'perf_schema.replication_group_members', hintZh: 'Group Replication 成员状态', hintEn: 'Group Replication member status' },
+  { id: 'perf_schema.replication_group_member_stats', label: 'perf_schema.replication_group_member_stats', hintZh: 'Group Replication 成员统计', hintEn: 'Group Replication member stats' },
+  { id: 'perf_schema.replication_applier_status_by_worker', label: 'perf_schema.replication_applier_status_by_worker', hintZh: '复制 applier worker 状态', hintEn: 'Replication applier worker status' },
+  { id: 'info_schema.processlist', label: 'info_schema.processlist', hintZh: '线程状态分布', hintEn: 'Thread state distribution' },
+  { id: 'info_schema.tables', label: 'info_schema.tables', hintZh: '表级统计，可能增加基数', hintEn: 'Table-level stats; may increase cardinality', risk: 'high' },
+  { id: 'perf_schema.eventsstatements', label: 'perf_schema.eventsstatements', hintZh: 'SQL digest 统计，可能包含高基数语句摘要', hintEn: 'SQL digest stats; may add high-cardinality statement digests', risk: 'high' },
+  { id: 'perf_schema.tableiowaits', label: 'perf_schema.tableiowaits', hintZh: '表 IO wait 指标', hintEn: 'Table IO wait metrics', risk: 'high' },
+  { id: 'perf_schema.tablelocks', label: 'perf_schema.tablelocks', hintZh: '表锁等待指标', hintEn: 'Table lock wait metrics', risk: 'high' },
+  { id: 'info_schema.innodb_metrics', label: 'info_schema.innodb_metrics', hintZh: 'InnoDB 内部指标', hintEn: 'InnoDB internal metrics' },
+  { id: 'engine_innodb_status', label: 'engine_innodb_status', hintZh: 'SHOW ENGINE INNODB STATUS', hintEn: 'SHOW ENGINE INNODB STATUS' },
+  { id: 'binlog_size', label: 'binlog_size', hintZh: 'binlog 文件大小', hintEn: 'Binlog file size' },
+  { id: 'heartbeat', label: 'heartbeat', hintZh: 'pt-heartbeat 延迟指标', hintEn: 'pt-heartbeat lag metrics' },
+];
+
+const MYSQL_EXPORTER_COLLECTOR_SET = new Set(MYSQL_EXPORTER_COLLECTOR_OPTIONS.map((option) => option.id));
+
+const MONGODB_EXPORTER_DEFAULT_COLLECTORS = ['diagnosticdata', 'replicasetstatus', 'fcv'] as const;
+
+const MONGODB_EXPORTER_COLLECTOR_OPTIONS = [
+  {
+    id: 'diagnosticdata',
+    label: 'diagnosticdata',
+    hintZh: 'serverStatus / diagnosticData，连接数、操作计数、asserts、内存等核心指标',
+    hintEn: 'serverStatus / diagnosticData: core metrics such as connections, op counters, asserts, and memory',
+    risk: 'normal',
+  },
+  {
+    id: 'replicasetstatus',
+    label: 'replicasetstatus',
+    hintZh: '副本集成员状态与复制延迟',
+    hintEn: 'Replica set member state and replication lag',
+    risk: 'normal',
+  },
+  {
+    id: 'fcv',
+    label: 'fcv',
+    hintZh: 'Feature Compatibility Version',
+    hintEn: 'Feature Compatibility Version',
+    risk: 'normal',
+  },
+  {
+    id: 'replicasetconfig',
+    label: 'replicasetconfig',
+    hintZh: '副本集配置',
+    hintEn: 'Replica set configuration',
+    risk: 'normal',
+  },
+  {
+    id: 'dbstats',
+    label: 'dbstats',
+    hintZh: '数据库级统计',
+    hintEn: 'Database-level stats',
+    risk: 'normal',
+  },
+  {
+    id: 'dbstatsfreestorage',
+    label: 'dbstatsfreestorage',
+    hintZh: '数据库空闲存储统计',
+    hintEn: 'Free storage stats from dbStats',
+    risk: 'normal',
+  },
+  {
+    id: 'topmetrics',
+    label: 'topmetrics',
+    hintZh: 'top admin 指标，可能按命名空间展开',
+    hintEn: 'top admin metrics, may expand by namespace',
+    risk: 'high',
+  },
+  {
+    id: 'currentopmetrics',
+    label: 'currentopmetrics',
+    hintZh: '当前操作指标，可能带来较多动态维度',
+    hintEn: 'Current operation metrics, may add dynamic dimensions',
+    risk: 'high',
+  },
+  {
+    id: 'indexstats',
+    label: 'indexstats',
+    hintZh: '$indexStats，通常按 collection / index 展开',
+    hintEn: '$indexStats, usually expands by collection / index',
+    risk: 'high',
+  },
+  {
+    id: 'collstats',
+    label: 'collstats',
+    hintZh: '$collStats，通常按 collection 展开',
+    hintEn: '$collStats, usually expands by collection',
+    risk: 'high',
+  },
+  {
+    id: 'profile',
+    label: 'profile',
+    hintZh: 'profile 指标，可能包含查询维度',
+    hintEn: 'Profile metrics, may include query dimensions',
+    risk: 'high',
+  },
+  {
+    id: 'shards',
+    label: 'shards',
+    hintZh: '分片集群指标',
+    hintEn: 'Sharded cluster metrics',
+    risk: 'normal',
+  },
+  {
+    id: 'pbm',
+    label: 'pbm',
+    hintZh: 'Percona Backup for MongoDB 指标',
+    hintEn: 'Percona Backup for MongoDB metrics',
+    risk: 'normal',
+  },
+] as const;
+
+const MONGODB_EXPORTER_COLLECTOR_SET = new Set(MONGODB_EXPORTER_COLLECTOR_OPTIONS.map((option) => option.id));
+
+const EXPORTER_COLLECTOR_SETS: Partial<Record<DBType, Set<string>>> = {
+  mysql: MYSQL_EXPORTER_COLLECTOR_SET,
+  mongodb: MONGODB_EXPORTER_COLLECTOR_SET,
+};
+
+const POSTGRES_EXPORTER_BOOLEAN_OPTIONS: ExporterOption[] = [
+  { id: 'auto_discover_databases', label: 'auto_discover_databases', hintZh: '动态发现同实例数据库；适合多库实例', hintEn: 'Dynamically discover databases on the same instance' },
+  { id: 'disable_default_metrics', label: 'disable_default_metrics', hintZh: '只采集自定义 queries.yaml', hintEn: 'Use only custom queries.yaml metrics' },
+  { id: 'disable_settings_metrics', label: 'disable_settings_metrics', hintZh: '不采集 pg_settings', hintEn: 'Do not collect pg_settings metrics' },
+];
+
+const REDIS_EXPORTER_BOOLEAN_OPTIONS: ExporterOption[] = [
+  { id: 'is_cluster', label: 'is_cluster', hintZh: 'Redis Cluster 模式，用于 key 级采集时发现 cluster 节点', hintEn: 'Redis Cluster mode for key-level collection across cluster nodes' },
+  { id: 'cluster_discover_hostnames', label: 'cluster_discover_hostnames', hintZh: 'cluster 节点发现使用 hostname', hintEn: 'Use hostnames when discovering cluster nodes' },
+  { id: 'include_sentinel_peer_info', label: 'include_sentinel_peer_info', hintZh: 'Sentinel peer 信息，高基数', hintEn: 'Sentinel peer info; high cardinality', risk: 'high' },
+  { id: 'include_config_metrics', label: 'include_config_metrics', hintZh: '采集 CONFIG 指标', hintEn: 'Collect CONFIG metrics' },
+  { id: 'include_modules_metrics', label: 'include_modules_metrics', hintZh: '采集 Redis Modules 指标', hintEn: 'Collect Redis Modules metrics' },
+  { id: 'include_search_indexes_metrics', label: 'include_search_indexes_metrics', hintZh: '采集 Redis Search index 指标', hintEn: 'Collect Redis Search index metrics', risk: 'high' },
+  { id: 'include_system_metrics', label: 'include_system_metrics', hintZh: '采集 Redis system 指标', hintEn: 'Collect Redis system metrics' },
+  { id: 'include_rdb_file_size_metric', label: 'include_rdb_file_size_metric', hintZh: '采集 RDB 文件大小；要求 exporter 能访问 RDB 文件', hintEn: 'Collect RDB file size; exporter must access the RDB file' },
+  { id: 'export_client_list', label: 'export_client_list', hintZh: '采集 CLIENT LIST 指标', hintEn: 'Collect CLIENT LIST metrics', risk: 'high' },
+  { id: 'export_client_port', label: 'export_client_port', hintZh: 'CLIENT LIST 增加 client port label，高基数', hintEn: 'Add client port label for CLIENT LIST; high cardinality', risk: 'high' },
+  { id: 'skip_checkkeys_for_role_master', label: 'skip_checkkeys_for_role_master', hintZh: 'master 角色跳过 key 扫描，降低生产压力', hintEn: 'Skip key scans on masters to reduce production load' },
+  { id: 'streams_exclude_consumer_metrics', label: 'streams_exclude_consumer_metrics', hintZh: 'stream 采集时不暴露 consumer 维度', hintEn: 'Omit consumer metrics for stream checks' },
+  { id: 'disable_exporting_key_values', label: 'disable_exporting_key_values', hintZh: 'key 检查不把 value 作为 label', hintEn: 'Do not export key values as labels' },
+];
+
+const MONGODB_EXPORTER_BOOLEAN_OPTIONS: ExporterOption[] = [
+  { id: 'collect_all', label: 'collect_all', hintZh: '启用全部 collector；会忽略上面的 collector 选择', hintEn: 'Enable all collectors; overrides the collector selection above', risk: 'high' },
+  { id: 'discovering_mode', label: 'discovering_mode', hintZh: '自动发现 collection，用于 collstats/indexstats 等', hintEn: 'Autodiscover collections for collstats/indexstats and related collectors', risk: 'high' },
+  { id: 'compatible_mode', label: 'compatible_mode', hintZh: '同时暴露旧版兼容指标名', hintEn: 'Expose legacy compatible metric names as well' },
+  { id: 'split_cluster', label: 'split_cluster', hintZh: '将集群中每个节点作为独立 target 处理', hintEn: 'Treat each cluster node as a separate target' },
+  { id: 'collstats_enable_details', label: 'collstats_enable_details', hintZh: 'collStats 增加 index details / WiredTiger 细节', hintEn: 'Enable index details and WiredTiger details for collStats', risk: 'high' },
+  { id: 'metrics_override_descending_index', label: 'metrics_override_descending_index', hintZh: '下降索引名兼容处理', hintEn: 'Override descending index names for metrics' },
+];
+
+const EXPORTER_FIELD_SETS: Record<DBType, Set<string>> = {
+  mysql: new Set([
+    'collectors',
+    'heartbeat_utc',
+    'heartbeat_database',
+    'heartbeat_table',
+    'info_schema_tables_databases',
+    'info_schema_processlist_min_time',
+    'perf_schema_eventsstatements_limit',
+    'perf_schema_eventsstatements_digest_text_limit',
+    'perf_schema_eventsstatements_timelimit',
+    'exporter_lock_wait_timeout',
+    'exporter_log_slow_filter',
+  ]),
+  postgresql: new Set([
+    'auto_discover_databases',
+    'disable_default_metrics',
+    'disable_settings_metrics',
+    'extend_query_path',
+    'include_databases',
+    'exclude_databases',
+    'metric_prefix',
+  ]),
+  redis: new Set([
+    'is_cluster',
+    'cluster_discover_hostnames',
+    'include_sentinel_peer_info',
+    'include_config_metrics',
+    'include_modules_metrics',
+    'include_search_indexes_metrics',
+    'include_system_metrics',
+    'include_rdb_file_size_metric',
+    'export_client_list',
+    'export_client_port',
+    'skip_checkkeys_for_role_master',
+    'streams_exclude_consumer_metrics',
+    'disable_exporting_key_values',
+    'check_keys',
+    'check_single_keys',
+    'check_key_groups',
+    'count_keys',
+    'check_streams',
+    'check_single_streams',
+    'check_search_indexes',
+    'check_keys_batch_size',
+    'max_distinct_key_groups',
+    'config_command',
+    'connection_timeout',
+    'script',
+  ]),
+  mongodb: new Set([
+    'collectors',
+    'collect_all',
+    'discovering_mode',
+    'compatible_mode',
+    'split_cluster',
+    'collstats_enable_details',
+    'metrics_override_descending_index',
+    'collstats_limit',
+    'profile_time_ts',
+    'currentopmetrics_slow_time',
+  ]),
+};
+
+function buildDatabaseLabelDropDefault(dbType: DBType): string[] {
+  return [...DB_LABEL_DROP_DEFAULT[dbType]];
+}
+
+function buildDatabaseExporterDefault(dbType: DBType): Record<string, unknown> {
+  if (dbType === 'mongodb') return { collectors: [...MONGODB_EXPORTER_DEFAULT_COLLECTORS] };
+  if (dbType === 'mysql') return { collectors: [...MYSQL_EXPORTER_DEFAULT_COLLECTORS] };
+  return {};
+}
+
 function buildCredentialTemplate(dbType: DBType): Record<string, string> {
   const base = {
     host: '127.0.0.1',
@@ -1828,10 +2129,63 @@ function buildCredentialTemplate(dbType: DBType): Record<string, string> {
     username: '',
     password: '',
     database: dbType === 'postgresql' ? 'postgres' : dbType === 'mongodb' ? 'admin' : dbType === 'redis' ? '0' : '',
+    tls_enabled: 'false',
+    tls_skip_verify: 'false',
+    tls_ca_file: '',
+    tls_cert_file: '',
+    tls_key_file: '',
   };
   if (dbType === 'postgresql') return { ...base, sslmode: 'disable' };
   if (dbType === 'mongodb') return { ...base, auth_source: 'admin' };
   return base;
+}
+
+function buildCredentialTemplateWithTLS(
+  dbType: DBType,
+  tlsConfig: Record<string, unknown>,
+): Record<string, string> {
+  const next = buildCredentialTemplate(dbType);
+  const caFile = typeof tlsConfig.ca_file === 'string' ? tlsConfig.ca_file : '';
+  const certFile = typeof tlsConfig.cert_file === 'string' ? tlsConfig.cert_file : '';
+  const keyFile = typeof tlsConfig.key_file === 'string' ? tlsConfig.key_file : '';
+  const skipVerify = tlsConfig.skip_verify === true;
+  const enabled = tlsConfig.enabled === true || skipVerify || Boolean(caFile || certFile || keyFile);
+  if (!enabled) return next;
+  next.tls_enabled = 'true';
+  next.tls_skip_verify = skipVerify ? 'true' : 'false';
+  next.tls_ca_file = caFile;
+  next.tls_cert_file = certFile;
+  next.tls_key_file = keyFile;
+  if (dbType === 'postgresql' && next.sslmode === 'disable') next.sslmode = 'require';
+  return next;
+}
+
+function databaseTLSConfig(source: Record<string, unknown>): Record<string, unknown> {
+  return source.tls && typeof source.tls === 'object' && !Array.isArray(source.tls)
+    ? (source.tls as Record<string, unknown>)
+    : {};
+}
+
+function databaseTLSSummary(
+  tlsConfig: Record<string, unknown>,
+  tr: (zh: string, en: string) => string,
+): string[] {
+  const enabled =
+    tlsConfig.enabled === true ||
+    tlsConfig.skip_verify === true ||
+    typeof tlsConfig.ca_file === 'string' ||
+    typeof tlsConfig.cert_file === 'string' ||
+    typeof tlsConfig.key_file === 'string';
+  if (!enabled) return [];
+  const items = [tr('TLS 已启用', 'TLS enabled')];
+  if (tlsConfig.skip_verify === true) {
+    items.push(tr('跳过证书校验', 'Skip verification'));
+    return items;
+  }
+  if (typeof tlsConfig.ca_file === 'string' && tlsConfig.ca_file) items.push(`CA ${tlsConfig.ca_file}`);
+  if (typeof tlsConfig.cert_file === 'string' && tlsConfig.cert_file) items.push(`cert ${tlsConfig.cert_file}`);
+  if (typeof tlsConfig.key_file === 'string' && tlsConfig.key_file) items.push(`key ${tlsConfig.key_file}`);
+  return items;
 }
 
 function buildDatabaseSourceTemplate(dbType: DBType, idx: number): Record<string, unknown> {
@@ -1849,14 +2203,193 @@ function buildDatabaseSourceTemplate(dbType: DBType, idx: number): Record<string
     source_label: `db:${id}`,
     extra_labels: { db_type: dbType, service: id },
     sample_limit: 5000,
-    label_drop: ['query', 'statement', 'collection'],
+    label_drop: buildDatabaseLabelDropDefault(dbType),
+    ...(buildDatabaseExporterDefault(dbType) ? { exporter: buildDatabaseExporterDefault(dbType) } : {}),
   };
+}
+
+function databaseLabelDropHint(
+  dbType: DBType,
+  tr: (zh: string, en: string) => string,
+): string {
+  if (dbType === 'redis') {
+    return tr(
+      'Redis 默认不删除 label；如果 exporter 暴露高基数字段，再手动添加。',
+      'Redis does not drop labels by default; add fields manually if the exporter exposes high-cardinality labels.',
+    );
+  }
+  if (dbType === 'mongodb') {
+    return tr(
+      'MongoDB 默认删除 collection / query 等高基数字段。',
+      'MongoDB defaults drop high-cardinality fields such as collection / query.',
+    );
+  }
+  return tr(
+    '默认删除 query / statement 等高基数字段。',
+    'Defaults drop high-cardinality fields such as query / statement.',
+  );
+}
+
+const RESERVED_DATABASE_METRIC_PORTS: Record<string, string> = {
+  '9102': 'hostmetrics',
+  '9256': 'procmetrics',
+};
+
+function validatePluginSpecBeforeSave(
+  name: string,
+  spec: Record<string, unknown>,
+  tr: (zh: string, en: string) => string,
+): string | null {
+  if (name === 'custommetrics') return validateCustomMetricsSpecBeforeSave(spec, tr);
+  if (name === 'databasemetrics') return validateDatabaseMetricsSpecBeforeSave(spec, tr);
+  return null;
+}
+
+function validateCustomMetricsSpecBeforeSave(
+  spec: Record<string, unknown>,
+  tr: (zh: string, en: string) => string,
+): string | null {
+  const seenURLs: Record<string, string> = {};
+  const targets = asObjectArray(spec.targets);
+  for (let idx = 0; idx < targets.length; idx += 1) {
+    const target = targets[idx];
+    const id = typeof target.id === 'string' && target.id.trim() ? target.id.trim() : `#${idx + 1}`;
+    const rawURL = typeof target.target_url === 'string' ? target.target_url.trim() : '';
+    if (!rawURL) continue;
+    const key = canonicalTargetURL(rawURL);
+    const previous = seenURLs[key];
+    if (previous) {
+      return tr(
+        `target_url ${rawURL} 与 ${previous} 重复`,
+        `target_url ${rawURL} duplicates ${previous}`,
+      );
+    }
+    seenURLs[key] = id;
+  }
+  return null;
+}
+
+function validateDatabaseMetricsSpecBeforeSave(
+  spec: Record<string, unknown>,
+  tr: (zh: string, en: string) => string,
+): string | null {
+  const seenPorts: Record<string, string> = {};
+  const sources = asObjectArray(spec.sources);
+  for (let idx = 0; idx < sources.length; idx += 1) {
+    const source = sources[idx];
+    const id = typeof source.id === 'string' && source.id.trim() ? source.id.trim() : `#${idx + 1}`;
+    const dbType = normalizeDBType(source.db_type);
+    const listenAddress =
+      typeof source.listen_address === 'string' && source.listen_address.trim()
+        ? source.listen_address.trim()
+        : DB_LISTEN_DEFAULT[dbType];
+    const port = listenPortFromAddress(listenAddress);
+    if (!port) continue;
+    const reserved = RESERVED_DATABASE_METRIC_PORTS[port];
+    if (reserved) {
+      return tr(
+        `listen_address 端口 ${port} 与 ${reserved} 冲突`,
+        `listen_address port ${port} conflicts with ${reserved}`,
+      );
+    }
+    const previous = seenPorts[port];
+    if (previous) {
+      return tr(
+        `listen_address 端口 ${port} 与 ${previous} 重复`,
+        `listen_address port ${port} duplicates ${previous}`,
+      );
+    }
+    seenPorts[port] = id;
+    const exporter = databaseExporterConfig(source);
+    const collectors = exporter && Array.isArray(exporter.collectors) ? asStringArray(exporter.collectors) : [];
+    const collectorSet = EXPORTER_COLLECTOR_SETS[dbType];
+    for (const collector of collectors) {
+      if (!collectorSet || !collectorSet.has(collector)) {
+        return tr(
+          `${id} 的 ${dbType} collector ${collector} 不支持`,
+          `${id} ${dbType} collector ${collector} is not supported`,
+        );
+      }
+    }
+    if (exporter) {
+      const allowed = EXPORTER_FIELD_SETS[dbType];
+      for (const key of Object.keys(exporter)) {
+        if (!allowed.has(key)) {
+          return tr(
+            `${id} 的 exporter.${key} 不支持 ${dbType}`,
+            `${id} exporter.${key} is not supported for ${dbType}`,
+          );
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function canonicalTargetURL(rawURL: string): string {
+  try {
+    const parsed = new URL(rawURL);
+    parsed.protocol = parsed.protocol.toLowerCase();
+    parsed.hostname = parsed.hostname.toLowerCase();
+    return parsed.toString();
+  } catch {
+    return rawURL.trim();
+  }
+}
+
+function listenPortFromAddress(address: string): string | null {
+  const trimmed = address.trim();
+  const idx = trimmed.lastIndexOf(':');
+  if (idx < 0 || idx === trimmed.length - 1) return null;
+  const port = trimmed.slice(idx + 1);
+  return /^\d+$/.test(port) ? port : null;
+}
+
+function normalizeDBType(value: unknown): DBType {
+  return DB_TYPE_OPTIONS.some((option) => option.id === value) ? (value as DBType) : 'mysql';
+}
+
+function databaseExporterConfig(source: Record<string, unknown>): Record<string, unknown> | null {
+  return source.exporter && typeof source.exporter === 'object' && !Array.isArray(source.exporter)
+    ? (source.exporter as Record<string, unknown>)
+    : null;
+}
+
+function databaseExporterCollectors(source: Record<string, unknown>, dbType: DBType): string[] {
+  const exporter = databaseExporterConfig(source);
+  if (exporter && Array.isArray(exporter.collectors)) return asStringArray(exporter.collectors);
+  if (dbType === 'mysql') return [...MYSQL_EXPORTER_DEFAULT_COLLECTORS];
+  return [...MONGODB_EXPORTER_DEFAULT_COLLECTORS];
+}
+
+function exporterBool(exporter: Record<string, unknown> | null, key: string): boolean {
+  const value = exporter?.[key];
+  return value === true || (typeof value === 'string' && value.toLowerCase() === 'true');
+}
+
+function exporterString(exporter: Record<string, unknown> | null, key: string): string {
+  const value = exporter?.[key];
+  return typeof value === 'string' ? value : '';
+}
+
+function exporterNumber(exporter: Record<string, unknown> | null, key: string): number | null {
+  const value = exporter?.[key];
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() && !Number.isNaN(Number(value))) return Number(value);
+  return null;
 }
 
 function stripDatabaseMetricCredentials(spec: Record<string, unknown>): Record<string, unknown> {
   const sources = asObjectArray(spec.sources).map((source) => {
     const next = { ...source };
-    delete next.credentials;
+    const credentials =
+      next.credentials && typeof next.credentials === 'object' && !Array.isArray(next.credentials)
+        ? { ...(next.credentials as Record<string, unknown>) }
+        : null;
+    if (credentials) {
+      delete credentials.password;
+      next.credentials = credentials;
+    }
     const connection =
       next.connection && typeof next.connection === 'object' && !Array.isArray(next.connection)
         ? (next.connection as Record<string, unknown>)
@@ -1865,6 +2398,41 @@ function stripDatabaseMetricCredentials(spec: Record<string, unknown>): Record<s
     return next;
   });
   return { ...spec, sources };
+}
+
+function normalizeDatabaseMetricTLSForSave(spec: Record<string, unknown>): Record<string, unknown> {
+  const sources = asObjectArray(spec.sources).map((source) => {
+    const next = { ...source };
+    const credentials =
+      next.credentials && typeof next.credentials === 'object' && !Array.isArray(next.credentials)
+        ? { ...(next.credentials as Record<string, unknown>) }
+        : null;
+    const tls =
+      next.tls && typeof next.tls === 'object' && !Array.isArray(next.tls)
+        ? { ...(next.tls as Record<string, unknown>) }
+        : null;
+    const skipVerify = specBool(credentials?.tls_skip_verify) || specBool(tls?.skip_verify);
+    if (skipVerify) {
+      if (credentials) {
+        credentials.tls_ca_file = '';
+        credentials.tls_cert_file = '';
+        credentials.tls_key_file = '';
+        next.credentials = credentials;
+      }
+      if (tls) {
+        tls.ca_file = '';
+        tls.cert_file = '';
+        tls.key_file = '';
+        next.tls = tls;
+      }
+    }
+    return next;
+  });
+  return { ...spec, sources };
+}
+
+function specBool(value: unknown): boolean {
+  return value === true || (typeof value === 'string' && value.toLowerCase() === 'true');
 }
 
 function DatabaseMetricsSpecForm({
@@ -1966,13 +2534,13 @@ function DatabaseMetricsSpecForm({
                   health={healthMap[id]}
                   open={open}
                   onToggle={() => setOpenIndex(open ? null : idx)}
+                  onRemove={() => removeSource(idx)}
                 />
                 {open && (
                   <div className="border-t border-zinc-800 px-3 py-3">
                     <DatabaseSourceEditor
                       source={source}
                       onChange={(next) => updateSource(idx, next)}
-                      onRemove={() => removeSource(idx)}
                     />
                   </div>
                 )}
@@ -1988,11 +2556,9 @@ function DatabaseMetricsSpecForm({
 function DatabaseSourceEditor({
   source,
   onChange,
-  onRemove,
 }: {
   source: Record<string, unknown>;
   onChange(next: Record<string, unknown>): void;
-  onRemove(): void;
 }) {
   const { tr } = useI18n();
   const id = typeof source.id === 'string' ? source.id : '';
@@ -2000,6 +2566,7 @@ function DatabaseSourceEditor({
   const name = typeof source.name === 'string' ? source.name : id;
   const enabled = source.enabled !== false;
   const sampleLimit = typeof source.sample_limit === 'number' ? source.sample_limit : 5000;
+  const safeDBType = (DB_TYPE_OPTIONS.some((option) => option.id === dbType) ? dbType : 'mysql') as DBType;
   const connection =
     source.connection && typeof source.connection === 'object' && !Array.isArray(source.connection)
       ? (source.connection as Record<string, unknown>)
@@ -2008,6 +2575,9 @@ function DatabaseSourceEditor({
     source.credentials && typeof source.credentials === 'object' && !Array.isArray(source.credentials)
       ? (source.credentials as Record<string, unknown>)
       : null;
+  const tlsConfig = databaseTLSConfig(source);
+  const tlsSummary = databaseTLSSummary(tlsConfig, tr);
+  const credentialTemplate = buildCredentialTemplateWithTLS(safeDBType, tlsConfig);
   const secretSet = connection.secret_set === true;
   const editingCredentials = Boolean(credentials) || !secretSet;
   const setField = (key: string, value: unknown) => onChange({ ...source, [key]: value });
@@ -2019,25 +2589,30 @@ function DatabaseSourceEditor({
   };
   useEffect(() => {
     if (!secretSet && !credentials) {
-      setCredentials(buildCredentialTemplate(dbType as DBType));
+      setCredentials(credentialTemplate);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [secretSet, dbType]);
+  }, [secretSet, safeDBType]);
   const setDBType = (nextType: string) => {
     const currentLabels = asStringMap(source.extra_labels);
     const typed = (DB_TYPE_OPTIONS.some((option) => option.id === nextType) ? nextType : 'mysql') as DBType;
-    onChange({
+    const exporter = buildDatabaseExporterDefault(typed);
+    const nextSource: Record<string, unknown> = {
       ...source,
       db_type: typed,
       listen_address: DB_LISTEN_DEFAULT[typed] ?? DB_LISTEN_DEFAULT.mysql,
       connection: { type: 'managed', secret_set: false },
       credentials: buildCredentialTemplate(typed),
       extra_labels: { ...currentLabels, db_type: typed },
-    });
+      label_drop: buildDatabaseLabelDropDefault(typed),
+    };
+    if (exporter) nextSource.exporter = exporter;
+    else delete nextSource.exporter;
+    onChange(nextSource);
   };
   return (
-    <div className="rounded-md border border-zinc-800 bg-zinc-950/40 p-3">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <div className="space-y-4 rounded-md border border-zinc-800 bg-zinc-950/40 p-4">
+      <SpecSection title={tr('基础配置', 'Basic config')}>
         <label className="flex items-center gap-2 text-[12px] text-zinc-300">
           <input
             type="checkbox"
@@ -2047,103 +2622,375 @@ function DatabaseSourceEditor({
           />
           {tr('启用', 'Enabled')}
         </label>
-        <button
-          type="button"
-          onClick={onRemove}
-          className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-red-400"
-          aria-label={tr('移除采集源', 'Remove source')}
-        >
-          <Trash2 size={12} />
-        </button>
-      </div>
-      <div className="grid gap-3 md:grid-cols-3">
-        <SpecInput label="id" value={id} placeholder="mysql-prod" onChange={(v) => setField('id', v)} />
-        <SpecInput label="name" value={name} placeholder="mysql-prod" onChange={(v) => setField('name', v)} />
-        <div>
-          <label className="mb-1 block text-xs text-zinc-400">db_type</label>
-          <select
-            value={dbType}
-            onChange={(e) => setDBType(e.target.value)}
-            className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 font-mono text-[11px] text-zinc-100 focus:border-zinc-600 focus:outline-none"
-          >
-            <option value="mysql">mysql</option>
-            <option value="postgresql">postgresql</option>
-            <option value="redis">redis</option>
-            <option value="mongodb">mongodb</option>
-          </select>
-        </div>
-      </div>
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
-        <SpecInput
-          label="listen_address"
-          value={typeof source.listen_address === 'string' ? source.listen_address : DB_LISTEN_DEFAULT[dbType] ?? ''}
-          placeholder={DB_LISTEN_DEFAULT[dbType] ?? '127.0.0.1:19104'}
-          onChange={(v) => setField('listen_address', v)}
-        />
-        <div className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2">
-          <div className="text-xs text-zinc-400">{tr('凭据', 'Credentials')}</div>
-          <div className="mt-1 text-[11px] text-zinc-500">
-            {secretSet
-              ? tr('已写入 edge 本机 secret；不会回显密码。', 'Stored on the edge as a local secret; passwords are not shown.')
-              : tr('保存时写入 edge 本机 secret。', 'Written to an edge-local secret on save.')}
+        <div className="grid gap-3 md:grid-cols-3">
+          <SpecInput label="id" value={id} placeholder="mysql-prod" onChange={(v) => setField('id', v)} />
+          <SpecInput label="name" value={name} placeholder="mysql-prod" onChange={(v) => setField('name', v)} />
+          <div>
+            <label className="mb-1 block text-xs text-zinc-400">db_type</label>
+            <select
+              value={dbType}
+              onChange={(e) => setDBType(e.target.value)}
+              className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 font-mono text-[11px] text-zinc-100 focus:border-zinc-600 focus:outline-none"
+            >
+              <option value="mysql">mysql</option>
+              <option value="postgresql">postgresql</option>
+              <option value="redis">redis</option>
+              <option value="mongodb">mongodb</option>
+            </select>
           </div>
-          {!editingCredentials && (
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <SpecInput
+            label="listen_address"
+            value={typeof source.listen_address === 'string' ? source.listen_address : DB_LISTEN_DEFAULT[safeDBType] ?? ''}
+            placeholder={DB_LISTEN_DEFAULT[safeDBType] ?? '127.0.0.1:19104'}
+            onChange={(v) => setField('listen_address', v)}
+          />
+        </div>
+      </SpecSection>
+
+      <SpecSection
+        title={tr('连接凭据', 'Connection credentials')}
+        description={
+          secretSet
+            ? tr('已写入 edge 本机 secret；页面只隐藏密码，其它连接配置直接回显。', 'Stored as an edge-local secret; only passwords are hidden here, other connection config is shown.')
+            : tr('保存时写入 edge 本机 secret；manager 不保存明文密码。', 'Written to an edge-local secret on save; the manager does not store plaintext passwords.')
+        }
+        aside={
+          tlsSummary.length > 0 ? (
+            <div className="flex flex-wrap justify-end gap-1.5">
+              {tlsSummary.map((item) => (
+                <span
+                  key={item}
+                  className="rounded border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.5 font-mono text-[10px] text-sky-300"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          ) : null
+        }
+      >
+        {editingCredentials ? (
+          <DatabaseCredentialsEditor
+            dbType={safeDBType}
+            credentials={credentials ?? credentialTemplate}
+            onChange={setCredentials}
+          />
+        ) : (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+            <div className="text-[12px] font-medium text-amber-200">
+              {tr('旧配置缺少可回显的连接字段', 'This older config has no visible connection fields')}
+            </div>
+            <div className="mt-1 text-[11px] text-amber-200/80">
+              {tr('点击后重新填写 host / port / TLS 等信息；密码仍只用于保存，不会回显。', 'Refill host / port / TLS fields; the password is still used only for saving and is not shown.')}
+            </div>
             <button
               type="button"
-              onClick={() => setCredentials(buildCredentialTemplate(dbType as DBType))}
-              className="mt-2 inline-flex items-center gap-1 rounded-md border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-900"
+              onClick={() => setCredentials(credentialTemplate)}
+              className="mt-2 inline-flex items-center gap-1 rounded-md border border-amber-500/40 px-2 py-1 text-[11px] text-amber-100 hover:bg-amber-500/10"
             >
-              <Plus size={11} /> {tr('重新设置凭据', 'Reset credentials')}
+              <Plus size={11} /> {tr('重新填写连接信息', 'Refill connection info')}
             </button>
-          )}
+          </div>
+        )}
+      </SpecSection>
+
+      <SpecSection title={tr('采集参数', 'Scrape config')}>
+        <div className="grid gap-3 md:grid-cols-4">
+          <SpecInput
+            label="scrape_interval"
+            value={typeof source.scrape_interval === 'string' ? source.scrape_interval : '30s'}
+            placeholder="30s"
+            onChange={(v) => setField('scrape_interval', v)}
+          />
+          <SpecInput
+            label="scrape_timeout"
+            value={typeof source.scrape_timeout === 'string' ? source.scrape_timeout : '5s'}
+            placeholder="5s"
+            onChange={(v) => setField('scrape_timeout', v)}
+          />
+          <SpecInput
+            label="source_label"
+            value={typeof source.source_label === 'string' ? source.source_label : `db:${id}`}
+            placeholder="db:mysql-prod"
+            onChange={(v) => setField('source_label', v)}
+          />
+          <SpecNumberInput
+            label="sample_limit"
+            value={sampleLimit}
+            onChange={(v) => setField('sample_limit', v)}
+          />
+        </div>
+      </SpecSection>
+
+      <DatabaseExporterAdvancedSection dbType={safeDBType} source={source} onChange={onChange} />
+
+      <SpecSection title={tr('标签处理', 'Labels')}>
+        <div className="grid gap-3 md:grid-cols-2">
+          <StringListField
+            label="label_drop"
+            values={asStringArray(source.label_drop)}
+            placeholder={buildDatabaseLabelDropDefault(safeDBType)[0] ?? 'command'}
+            onChange={(next) => setField('label_drop', next)}
+            emptyText={tr('—（留空表示不删除 label）', '— (empty means no labels are dropped)')}
+            hint={databaseLabelDropHint(safeDBType, tr)}
+          />
+          <StringMapField
+            label="extra_labels"
+            values={asStringMap(source.extra_labels)}
+            onChange={(next) => setField('extra_labels', next)}
+            emptyText={tr('—（默认会注入 db_type / service）', '— (db_type / service are added by default)')}
+          />
+        </div>
+      </SpecSection>
+    </div>
+  );
+}
+
+function SpecSection({
+  title,
+  description,
+  aside,
+  children,
+}: {
+  title: string;
+  description?: string;
+  aside?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-3 border-t border-zinc-800/70 pt-4 first:border-t-0 first:pt-0">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-[12px] font-medium text-zinc-200">{title}</div>
+          {description && <div className="mt-0.5 text-[11px] text-zinc-500">{description}</div>}
+        </div>
+        {aside}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function DatabaseExporterAdvancedSection({
+  dbType,
+  source,
+  onChange,
+}: {
+  dbType: DBType;
+  source: Record<string, unknown>;
+  onChange(next: Record<string, unknown>): void;
+}) {
+  const { tr } = useI18n();
+  const exporter = databaseExporterConfig(source) ?? {};
+  const setExporter = (next: Record<string, unknown>) => onChange({ ...source, exporter: next });
+  const setExporterField = (key: string, value: unknown) => {
+    const next = { ...exporter };
+    if (value === '' || value === null || value === undefined || (Array.isArray(value) && value.length === 0)) {
+      delete next[key];
+    } else {
+      next[key] = value;
+    }
+    setExporter(next);
+  };
+  const setCollectors = (collectors: string[]) => setExporterField('collectors', collectors);
+
+  if (dbType === 'mysql') {
+    return (
+      <SpecSection
+        title={tr('高级采集', 'Advanced collection')}
+        description={tr(
+          '按需开启 MySQL 复制、Performance Schema、Information Schema 等 collector；高基数 collector 需要配合 sample_limit 和 label_drop。',
+          'Enable MySQL replication, Performance Schema, and Information Schema collectors as needed. Pair high-cardinality collectors with sample_limit and label_drop.',
+        )}
+      >
+        <ExporterCollectorField
+          values={databaseExporterCollectors(source, dbType)}
+          options={MYSQL_EXPORTER_COLLECTOR_OPTIONS}
+          defaultValues={MYSQL_EXPORTER_DEFAULT_COLLECTORS}
+          emptyHint={tr('默认使用 exporter 内置基础 collector；这里用于额外开启高级 collector。', 'The exporter default collectors stay active; use this to enable extra advanced collectors.')}
+          onChange={setCollectors}
+        />
+        <div className="grid gap-3 md:grid-cols-3">
+          <SpecInput label="info_schema_tables_databases" value={exporterString(exporter, 'info_schema_tables_databases')} placeholder="*" onChange={(v) => setExporterField('info_schema_tables_databases', v)} />
+          <SpecNumberInput label="info_schema_processlist_min_time" value={exporterNumber(exporter, 'info_schema_processlist_min_time') ?? 0} onChange={(v) => setExporterField('info_schema_processlist_min_time', v)} />
+          <SpecNumberInput label="perf_schema_eventsstatements_limit" value={exporterNumber(exporter, 'perf_schema_eventsstatements_limit') ?? 250} onChange={(v) => setExporterField('perf_schema_eventsstatements_limit', v)} />
+        </div>
+      </SpecSection>
+    );
+  }
+
+  if (dbType === 'postgresql') {
+    return (
+      <SpecSection
+        title={tr('高级采集', 'Advanced collection')}
+        description={tr('配置 PostgreSQL 多库发现、自定义 queries.yaml 和默认指标开关。', 'Configure PostgreSQL database discovery, custom queries.yaml, and default metric switches.')}
+      >
+        <ExporterBooleanGrid options={POSTGRES_EXPORTER_BOOLEAN_OPTIONS} exporter={exporter} onChange={setExporterField} />
+        <div className="grid gap-3 md:grid-cols-3">
+          <SpecInput label="extend_query_path" value={exporterString(exporter, 'extend_query_path')} placeholder="/etc/ongrid-edge/postgres-queries.yaml" onChange={(v) => setExporterField('extend_query_path', v)} />
+          <SpecInput label="metric_prefix" value={exporterString(exporter, 'metric_prefix')} placeholder="pg" onChange={(v) => setExporterField('metric_prefix', v)} />
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <StringListField label="include_databases" values={asStringArray(exporter.include_databases)} placeholder="app" onChange={(next) => setExporterField('include_databases', next)} emptyText={tr('—（不限制）', '— (no include filter)')} />
+          <StringListField label="exclude_databases" values={asStringArray(exporter.exclude_databases)} placeholder="template0" onChange={(next) => setExporterField('exclude_databases', next)} emptyText={tr('—（不排除）', '— (no exclude filter)')} />
+        </div>
+      </SpecSection>
+    );
+  }
+
+  if (dbType === 'redis') {
+    return (
+      <SpecSection
+        title={tr('高级采集', 'Advanced collection')}
+        description={tr(
+          '配置 Redis Cluster / Sentinel / key scan / stream / module 等高级采集。key scan 类配置可能增加 Redis 压力。',
+          'Configure Redis Cluster, Sentinel, key scan, stream, module, and other advanced collection. Key scan settings can add Redis load.',
+        )}
+      >
+        <ExporterBooleanGrid options={REDIS_EXPORTER_BOOLEAN_OPTIONS} exporter={exporter} onChange={setExporterField} />
+        <div className="grid gap-3 md:grid-cols-3">
+          <SpecInput label="check_keys" value={exporterString(exporter, 'check_keys')} placeholder="session:*" onChange={(v) => setExporterField('check_keys', v)} />
+          <SpecInput label="check_single_keys" value={exporterString(exporter, 'check_single_keys')} placeholder="queue:depth" onChange={(v) => setExporterField('check_single_keys', v)} />
+          <SpecInput label="count_keys" value={exporterString(exporter, 'count_keys')} placeholder="db0=session:*" onChange={(v) => setExporterField('count_keys', v)} />
+          <SpecInput label="check_streams" value={exporterString(exporter, 'check_streams')} placeholder="stream:*" onChange={(v) => setExporterField('check_streams', v)} />
+          <SpecInput label="check_search_indexes" value={exporterString(exporter, 'check_search_indexes')} placeholder=".*" onChange={(v) => setExporterField('check_search_indexes', v)} />
+          <SpecInput label="script" value={exporterString(exporter, 'script')} placeholder="/etc/ongrid-edge/redis-metrics.lua" onChange={(v) => setExporterField('script', v)} />
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <SpecNumberInput label="check_keys_batch_size" value={exporterNumber(exporter, 'check_keys_batch_size') ?? 1000} onChange={(v) => setExporterField('check_keys_batch_size', v)} />
+          <SpecNumberInput label="max_distinct_key_groups" value={exporterNumber(exporter, 'max_distinct_key_groups') ?? 100} onChange={(v) => setExporterField('max_distinct_key_groups', v)} />
+        </div>
+      </SpecSection>
+    );
+  }
+
+  return (
+    <SpecSection
+      title={tr('高级采集', 'Advanced collection')}
+      description={tr(
+        '选择 MongoDB exporter collector，并配置集群发现、兼容模式和高基数 collector 参数。',
+        'Select MongoDB exporter collectors and configure cluster discovery, compatibility mode, and high-cardinality collector settings.',
+      )}
+    >
+      <ExporterCollectorField
+        values={databaseExporterCollectors(source, dbType)}
+        options={MONGODB_EXPORTER_COLLECTOR_OPTIONS}
+        defaultValues={[...MONGODB_EXPORTER_DEFAULT_COLLECTORS]}
+        emptyHint={tr(
+          '默认开启 diagnosticdata / replicasetstatus / fcv；清空后只保留 exporter 基础连通性指标。',
+          'Defaults enable diagnosticdata / replicasetstatus / fcv. Clearing the list leaves only basic exporter connectivity metrics.',
+        )}
+        onChange={setCollectors}
+      />
+      <ExporterBooleanGrid options={MONGODB_EXPORTER_BOOLEAN_OPTIONS} exporter={exporter} onChange={setExporterField} />
+      <div className="grid gap-3 md:grid-cols-3">
+        <SpecNumberInput label="collstats_limit" value={exporterNumber(exporter, 'collstats_limit') ?? 0} onChange={(v) => setExporterField('collstats_limit', v)} />
+        <SpecNumberInput label="profile_time_ts" value={exporterNumber(exporter, 'profile_time_ts') ?? 30} onChange={(v) => setExporterField('profile_time_ts', v)} />
+        <SpecInput label="currentopmetrics_slow_time" value={exporterString(exporter, 'currentopmetrics_slow_time')} placeholder="5m" onChange={(v) => setExporterField('currentopmetrics_slow_time', v)} />
+      </div>
+    </SpecSection>
+  );
+}
+
+function ExporterBooleanGrid({
+  options,
+  exporter,
+  onChange,
+}: {
+  options: readonly ExporterOption[];
+  exporter: Record<string, unknown> | null;
+  onChange(key: string, value: unknown): void;
+}) {
+  const { tr } = useI18n();
+  return (
+    <div className="grid gap-2 md:grid-cols-2">
+      {options.map((option) => (
+        <label key={option.id} className="flex gap-2 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 hover:border-zinc-700">
+          <input
+            type="checkbox"
+            checked={exporterBool(exporter, option.id)}
+            onChange={(e) => onChange(option.id, e.target.checked)}
+            className="mt-0.5 h-3.5 w-3.5 rounded border-zinc-700 bg-zinc-900"
+          />
+          <span className="min-w-0">
+            <span className="flex flex-wrap items-center gap-1.5">
+              <span className="font-mono text-[11px] text-zinc-100">{option.label}</span>
+              {option.risk === 'high' && (
+                <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
+                  {tr('高基数', 'High cardinality')}
+                </span>
+              )}
+            </span>
+            <span className="mt-1 block text-[10px] leading-4 text-zinc-500">{tr(option.hintZh, option.hintEn)}</span>
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function ExporterCollectorField({
+  values,
+  options,
+  defaultValues,
+  emptyHint,
+  onChange,
+}: {
+  values: string[];
+  options: readonly ExporterOption[];
+  defaultValues: readonly string[];
+  emptyHint: string;
+  onChange(next: string[]): void;
+}) {
+  const { tr } = useI18n();
+  const selected = new Set(values);
+  const toggle = (id: string, checked: boolean) => {
+    if (checked) {
+      onChange([...values, id]);
+      return;
+    }
+    onChange(values.filter((value) => value !== id));
+  };
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-[11px] text-zinc-500">{emptyHint}</div>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => onChange([...defaultValues])} className="rounded-md border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-900">
+            {tr('恢复默认', 'Reset default')}
+          </button>
+          <button type="button" onClick={() => onChange([])} className="rounded-md border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-900">
+            {tr('清空', 'Clear')}
+          </button>
         </div>
       </div>
-      {editingCredentials && (
-        <DatabaseCredentialsEditor
-          dbType={dbType as DBType}
-          credentials={credentials ?? buildCredentialTemplate(dbType as DBType)}
-          onChange={setCredentials}
-        />
-      )}
-      <div className="mt-3 grid gap-3 md:grid-cols-4">
-        <SpecInput
-          label="scrape_interval"
-          value={typeof source.scrape_interval === 'string' ? source.scrape_interval : '30s'}
-          placeholder="30s"
-          onChange={(v) => setField('scrape_interval', v)}
-        />
-        <SpecInput
-          label="scrape_timeout"
-          value={typeof source.scrape_timeout === 'string' ? source.scrape_timeout : '5s'}
-          placeholder="5s"
-          onChange={(v) => setField('scrape_timeout', v)}
-        />
-        <SpecInput
-          label="source_label"
-          value={typeof source.source_label === 'string' ? source.source_label : `db:${id}`}
-          placeholder="db:mysql-prod"
-          onChange={(v) => setField('source_label', v)}
-        />
-        <SpecNumberInput
-          label="sample_limit"
-          value={sampleLimit}
-          onChange={(v) => setField('sample_limit', v)}
-        />
-      </div>
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
-        <StringListField
-          label="label_drop"
-          values={asStringArray(source.label_drop)}
-          placeholder="query"
-          onChange={(next) => setField('label_drop', next)}
-          hint={tr('默认删除 query / statement / collection 等高基数字段。', 'Defaults drop high-cardinality fields such as query / statement / collection.')}
-        />
-        <StringMapField
-          label="extra_labels"
-          values={asStringMap(source.extra_labels)}
-          onChange={(next) => setField('extra_labels', next)}
-          emptyText={tr('—（默认会注入 db_type / service）', '— (db_type / service are added by default)')}
-        />
+      <div className="grid gap-2 md:grid-cols-2">
+        {options.map((option) => {
+          const checked = selected.has(option.id);
+          return (
+            <label key={option.id} className="flex gap-2 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 hover:border-zinc-700">
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => toggle(option.id, e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 rounded border-zinc-700 bg-zinc-900"
+              />
+              <span className="min-w-0">
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-mono text-[11px] text-zinc-100">{option.label}</span>
+                  {option.risk === 'high' && (
+                    <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
+                      {tr('高基数', 'High cardinality')}
+                    </span>
+                  )}
+                </span>
+                <span className="mt-1 block text-[10px] leading-4 text-zinc-500">{tr(option.hintZh, option.hintEn)}</span>
+              </span>
+            </label>
+          );
+        })}
       </div>
     </div>
   );
@@ -2161,6 +3008,52 @@ function DatabaseCredentialsEditor({
   const { tr } = useI18n();
   const value = (key: string) => (typeof credentials[key] === 'string' ? (credentials[key] as string) : '');
   const setCredential = (key: string, next: string) => onChange({ ...credentials, [key]: next });
+  const boolValue = (key: string) => credentials[key] === true || value(key).toLowerCase() === 'true';
+  const setCredentialBool = (key: string, next: boolean) => {
+    const updated = { ...credentials, [key]: next ? 'true' : 'false' };
+    if (key === 'tls_enabled' && next && dbType === 'postgresql' && (!value('sslmode') || value('sslmode') === 'disable')) {
+      updated.sslmode = 'require';
+    }
+    if (key === 'tls_enabled' && !next) {
+      updated.tls_skip_verify = 'false';
+      updated.tls_ca_file = '';
+      updated.tls_cert_file = '';
+      updated.tls_key_file = '';
+      if (dbType === 'postgresql') updated.sslmode = 'disable';
+    }
+    if (key === 'tls_skip_verify' && next) {
+      updated.tls_enabled = 'true';
+      updated.tls_ca_file = '';
+      updated.tls_cert_file = '';
+      updated.tls_key_file = '';
+      if (dbType === 'postgresql') {
+        updated.sslmode = 'require';
+      }
+    }
+    onChange(updated);
+  };
+  const setPostgresSSLMode = (nextMode: string) => {
+    const updated: Record<string, unknown> = { ...credentials, sslmode: nextMode };
+    if (nextMode === 'disable') {
+      updated.tls_enabled = 'false';
+      updated.tls_skip_verify = 'false';
+      updated.tls_ca_file = '';
+      updated.tls_cert_file = '';
+      updated.tls_key_file = '';
+    } else {
+      updated.tls_enabled = 'true';
+      if (nextMode === 'verify-ca' || nextMode === 'verify-full') {
+        updated.tls_skip_verify = 'false';
+      }
+    }
+    onChange(updated);
+  };
+  const skipVerify = boolValue('tls_skip_verify');
+  const tlsEnabled =
+    boolValue('tls_enabled') ||
+    skipVerify ||
+    Boolean(value('tls_ca_file') || value('tls_cert_file') || value('tls_key_file'));
+  const showTLSFiles = tlsEnabled && !skipVerify;
   const passwordHint =
     dbType === 'redis'
       ? tr('Redis 如未设置密码可留空。保存后不会回显。', 'Leave empty if Redis has no password. It is not shown after save.')
@@ -2190,10 +3083,79 @@ function DatabaseCredentialsEditor({
           onChange={(v) => setCredential('database', v)}
         />
         {dbType === 'postgresql' && (
-          <SpecInput label="sslmode" value={value('sslmode')} placeholder="disable" onChange={(v) => setCredential('sslmode', v)} />
+          <label>
+            <span className="mb-1 block text-xs text-zinc-400">sslmode</span>
+            <select
+              value={POSTGRES_SSLMODE_OPTIONS.includes(value('sslmode') as (typeof POSTGRES_SSLMODE_OPTIONS)[number]) ? value('sslmode') : 'disable'}
+              onChange={(e) => setPostgresSSLMode(e.target.value)}
+              className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 font-mono text-[11px] text-zinc-100 focus:border-zinc-600 focus:outline-none"
+            >
+              {POSTGRES_SSLMODE_OPTIONS.map((mode) => (
+                <option key={mode} value={mode}>
+                  {mode}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
         {dbType === 'mongodb' && (
           <SpecInput label="auth_source" value={value('auth_source')} placeholder="admin" onChange={(v) => setCredential('auth_source', v)} />
+        )}
+      </div>
+      <div className="mt-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2">
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-2 text-[12px] text-zinc-300">
+            <input
+              type="checkbox"
+              checked={tlsEnabled}
+              onChange={(e) => setCredentialBool('tls_enabled', e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-zinc-700 bg-zinc-900"
+            />
+            TLS / SSL
+          </label>
+          <label className="flex items-center gap-2 text-[12px] text-zinc-300">
+            <input
+              type="checkbox"
+              checked={skipVerify}
+              onChange={(e) => setCredentialBool('tls_skip_verify', e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-zinc-700 bg-zinc-900"
+            />
+            {tr('跳过证书校验', 'Skip verification')}
+          </label>
+        </div>
+        {showTLSFiles && (
+          <>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <SpecInput
+                label="tls_ca_file"
+                value={value('tls_ca_file')}
+                placeholder="/etc/ongrid-edge/certs/ca.crt"
+                onChange={(v) => setCredential('tls_ca_file', v)}
+              />
+              <SpecInput
+                label="tls_cert_file"
+                value={value('tls_cert_file')}
+                placeholder={dbType === 'mongodb' ? '/etc/ongrid-edge/certs/client.pem' : '/etc/ongrid-edge/certs/client.crt'}
+                onChange={(v) => setCredential('tls_cert_file', v)}
+              />
+              <SpecInput
+                label="tls_key_file"
+                value={value('tls_key_file')}
+                placeholder="/etc/ongrid-edge/certs/client.key"
+                onChange={(v) => setCredential('tls_key_file', v)}
+              />
+            </div>
+            <div className="mt-2 text-[11px] text-zinc-500">
+              {dbType === 'mongodb'
+                ? tr('MongoDB 的 tls_cert_file 需要填写包含 cert + key 的 PEM 文件路径。', 'MongoDB tls_cert_file should point to a PEM file containing both cert and key.')
+                : tr('证书路径是 edge 本机路径；manager 只保存路径，不保存证书内容。', 'Certificate paths are edge-local; the manager stores paths only, not certificate contents.')}
+            </div>
+          </>
+        )}
+        {tlsEnabled && skipVerify && (
+          <div className="mt-2 text-[11px] text-zinc-500">
+            {tr('已跳过证书校验，不需要填写 CA / client cert / key 文件路径。', 'Certificate verification is skipped, so CA / client cert / key file paths are not required.')}
+          </div>
         )}
       </div>
       <div className="mt-2 text-[11px] text-zinc-500">

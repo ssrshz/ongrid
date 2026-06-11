@@ -2,6 +2,7 @@ package custommetrics
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ func parseSpec(spec map[string]interface{}) ([]metricscommon.Target, error) {
 	}
 	out := make([]metricscommon.Target, 0, len(items))
 	seen := map[string]struct{}{}
+	seenURLs := map[string]string{}
 	for i, raw := range items {
 		m, ok := raw.(map[string]interface{})
 		if !ok {
@@ -33,6 +35,11 @@ func parseSpec(spec map[string]interface{}) ([]metricscommon.Target, error) {
 			return nil, fmt.Errorf("targets[%d] duplicate id %q", i, t.ID)
 		}
 		seen[t.ID] = struct{}{}
+		urlKey := canonicalTargetURL(t.URL)
+		if prevID, exists := seenURLs[urlKey]; exists {
+			return nil, fmt.Errorf("targets[%d] duplicate target_url %q conflicts with target %q", i, t.URL, prevID)
+		}
+		seenURLs[urlKey] = t.ID
 		out = append(out, t)
 	}
 	return out, nil
@@ -88,6 +95,16 @@ func parseTarget(i int, m map[string]interface{}) (metricscommon.Target, error) 
 		return metricscommon.Target{}, fmt.Errorf("targets[%d].sample_limit must be >= 0", i)
 	}
 	return t, nil
+}
+
+func canonicalTargetURL(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return strings.TrimSpace(raw)
+	}
+	u.Scheme = strings.ToLower(u.Scheme)
+	u.Host = strings.ToLower(u.Host)
+	return u.String()
 }
 
 func stringFrom(m map[string]interface{}, key string) string {

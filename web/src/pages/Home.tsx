@@ -18,6 +18,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { ChatInput, type ModelSelection } from '@/components/ChatInput';
+import { ActionChip } from '@/components/ActionChip';
 import { useModelSelection } from '@/store/modelSelection';
 import { PromptCard } from '@/components/PromptCard';
 import { StatusRow } from '@/components/StatusRow';
@@ -263,6 +264,22 @@ export default function HomePage() {
             webSearchEnabled={webSearchEnabled}
             onWebSearchToggle={setWebSearchEnabled}
           />
+
+          <div className="mt-4 flex justify-center">
+            <ActionChip
+              icon={Database}
+              label={tr('分析数据库状态', 'Analyze database status')}
+              disabled={submitting}
+              onClick={() =>
+                void startSession(
+                  tr(
+                    '分析当前数据库状态，覆盖 MySQL、PostgreSQL、Redis、MongoDB；按异常优先输出总体结论、每个数据库的关键指标、风险和证据。',
+                    'Analyze current database status across MySQL, PostgreSQL, Redis, and MongoDB. Prioritize anomalies and include the overall conclusion, key metrics, risks, and evidence for each database.',
+                  ),
+                )
+              }
+            />
+          </div>
 
           {error && (
             <div

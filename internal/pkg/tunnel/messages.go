@@ -170,9 +170,12 @@ type GetPluginConfigsEntry struct {
 // Content is secret material; do not log it and do not persist it on the
 // manager side.
 type WriteDatabaseMetricsSecretRequest struct {
-	SourceID string `json:"source_id"`
-	Path     string `json:"path"`
-	Content  string `json:"content"`
+	SourceID         string                 `json:"source_id"`
+	Path             string                 `json:"path"`
+	Content          string                 `json:"content,omitempty"`
+	DBType           string                 `json:"db_type,omitempty"`
+	Credentials      map[string]interface{} `json:"credentials,omitempty"`
+	PreservePassword bool                   `json:"preserve_password,omitempty"`
 }
 
 // WriteDatabaseMetricsSecretResponse acknowledges that the edge wrote the

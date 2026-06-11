@@ -1,9 +1,10 @@
 // Package databasemetrics is the edge-side database metrics sub-plugin.
 //
 // It manages one exporter subprocess per configured database source. The
-// manager stores only the source metadata and a path to an edge-local secret
-// file; the edge reads that file, starts the exporter, scrapes its /metrics
-// endpoint, and pushes samples via push_prom_samples.
+// manager sends credential material once over the tunnel during save, stores
+// only non-secret source metadata, and the edge writes/reads an edge-local
+// managed secret file before starting exporters and pushing samples via
+// push_prom_samples.
 package databasemetrics
 
 import (

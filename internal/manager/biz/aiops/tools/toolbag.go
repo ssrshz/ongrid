@@ -13,11 +13,11 @@
 // pure):
 //
 //   - core = always exposes a full schema (host/cluster reads,
-//                 query_*, coordinator-only AgentTool / SendMessage /
-//                 TaskStop). 14 entries today.
+//     query_*, database inventory/status helpers, coordinator-only
+//     AgentTool / SendMessage / TaskStop). 15 entries today.
 //   - specialty = redacted-by-default when toolBag size > threshold;
-//                 schema fetched on demand via ToolSearch (host_files
-//                 trio, host_restart_service, alert detail, ranking helpers).
+//     schema fetched on demand via ToolSearch (host_files
+//     trio, host_restart_service, alert detail, ranking helpers).
 //
 // Threshold gating: when len(all) > threshold (default 30, env
 // ONGRID_TOOLBAG_DEFERRAL_THRESHOLD) the bag splits core / specialty
@@ -52,20 +52,22 @@ import (
 // call ToolSearch). Below threshold the bag never partitions, so
 // ToolSearch sits in the same flat slice as everything else.
 var tierByName = map[string]string{
-	// core (always full schema) — 13 entries.
-	"get_host_load":      "core",
-	"get_host_processes":   "core",
-	"query_promql":       "core",
-	"query_logql":        "core",
-	"query_traceql":      "core",
-	"query_devices":      "core",
-	"get_topology":       "core",
-	"query_incidents":    "core",
-	"get_edge_summary":   "core",
-	"correlate_incident": "core",
-	"AgentTool":          "core",
-	"SendMessage":        "core",
-	"TaskStop":           "core",
+	// core (always full schema) — 15 entries.
+	"get_host_load":           "core",
+	"get_host_processes":      "core",
+	"query_promql":            "core",
+	"list_database_sources":   "core",
+	"analyze_database_status": "core",
+	"query_logql":             "core",
+	"query_traceql":           "core",
+	"query_devices":           "core",
+	"get_topology":            "core",
+	"query_incidents":         "core",
+	"get_edge_summary":        "core",
+	"correlate_incident":      "core",
+	"AgentTool":               "core",
+	"SendMessage":             "core",
+	"TaskStop":                "core",
 
 	// specialty (deferred when over threshold) — host-files trio,
 	// alert detail tools, ranking helpers, mutating restart, generic
@@ -73,15 +75,15 @@ var tierByName = map[string]string{
 	// diagnostic exploration — most chats don't need it, and its
 	// when_to_use blob is large enough to want defer-loading once
 	// the marketplace pushes the bag past threshold.
-	"rank_edges":          "specialty",
-	"find_outlier_edges":  "specialty",
-	"get_incident_detail": "specialty",
-	"query_alert_rules":   "specialty",
-	"host_find_large_files":    "specialty",
-	"host_du_summary":          "specialty",
-	"host_stat_file":           "specialty",
-	"host_restart_service":     "specialty",
-	"host_bash":           "specialty",
+	"rank_edges":            "specialty",
+	"find_outlier_edges":    "specialty",
+	"get_incident_detail":   "specialty",
+	"query_alert_rules":     "specialty",
+	"host_find_large_files": "specialty",
+	"host_du_summary":       "specialty",
+	"host_stat_file":        "specialty",
+	"host_restart_service":  "specialty",
+	"host_bash":             "specialty",
 }
 
 // toolTier classifies a BaseTool. Errors from Info() are treated as
@@ -158,8 +160,8 @@ func NewToolBag(all []basetool.BaseTool, threshold int) *ToolBag {
 //
 //   - deferral off: the input slice (full schemas, PR-7 parity).
 //   - deferral on: core (full) + extras (full, e.g. ToolSearch) +
-//                   deferred (each wrapped in redactedTool which
-//                   advertises an empty schema).
+//     deferred (each wrapped in redactedTool which
+//     advertises an empty schema).
 func (b *ToolBag) SchemasForLLM() []basetool.BaseTool {
 	if b == nil {
 		return nil

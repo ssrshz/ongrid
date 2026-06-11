@@ -103,6 +103,10 @@ type Registry struct {
 	// changed near T"). nil-safe: the tool isn't registered when unset.
 	// Wired post-construction from cmd/main.go via SetAuditLister.
 	auditLister AuditLister
+	// pluginConfigs feeds database metrics source discovery. Wired
+	// post-construction from cmd/main.go because PluginConfigUC is built
+	// before chat runtime but after the registry's constructor deps.
+	pluginConfigs PluginConfigLister
 
 	log   *slog.Logger
 	tools map[string]Tool
@@ -111,6 +115,21 @@ type Registry struct {
 // SetAuditLister wires the audit query seam consumed by
 // query_change_events. Call after NewRegistry (cmd/main.go).
 func (r *Registry) SetAuditLister(a AuditLister) { r.auditLister = a }
+
+// SetPluginConfigLister wires the plugin config source discovery seam used by
+// list_database_sources / analyze_database_status. Call after NewRegistry
+// (cmd/main.go).
+func (r *Registry) SetPluginConfigLister(p PluginConfigLister) {
+	r.pluginConfigs = p
+	if p != nil && r.edges != nil {
+		r.Register(Tool{
+			Name:        ToolNameListDatabaseSources,
+			Description: ListDatabaseSourcesDescription,
+			Schema:      ListDatabaseSourcesSchema,
+			Execute:     r.executeListDatabaseSources,
+		})
+	}
+}
 
 // NewRegistry builds a Registry and auto-registers the two MVP tools
 // (get_host_load, get_process_list). When promQuery / logQuery /
@@ -189,6 +208,12 @@ func NewRegistry(caller Caller, edges *edgebiz.Usecase, devices *devicebiz.Useca
 		})
 	}
 	if edges != nil && promQuery != nil {
+		r.Register(Tool{
+			Name:        ToolNameAnalyzeDatabaseStatus,
+			Description: AnalyzeDatabaseStatusDescription,
+			Schema:      AnalyzeDatabaseStatusSchema,
+			Execute:     r.executeAnalyzeDatabaseStatus,
+		})
 		r.Register(Tool{
 			Name:        ToolNameRankEdges,
 			Description: RankEdgesDescription,

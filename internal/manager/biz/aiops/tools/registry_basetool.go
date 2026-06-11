@@ -84,6 +84,16 @@ func (r *Registry) BuildBaseTools() *ToolBag {
 	if r.promQuery != nil {
 		out = append(out, NewQueryPromQLTool(r.promQuery, r.log))
 	}
+	// 3a: list_database_sources — configured databasemetrics /
+	// database-tagged custommetrics inventory, no PromQL.
+	if r.edges != nil && r.pluginConfigs != nil {
+		out = append(out, NewListDatabaseSourcesTool(r.edges, r.devices, r.pluginConfigs, r.log))
+	}
+	// 3b: database status — curated PromQL checks over databasemetrics /
+	// database-tagged custommetrics sources.
+	if r.promQuery != nil && r.edges != nil {
+		out = append(out, NewAnalyzeDatabaseStatusTool(r.promQuery, r.edges, r.devices, r.pluginConfigs, r.log))
+	}
 	// 4: query_logql — gated on Loki client.
 	if r.logQuery != nil {
 		out = append(out, NewQueryLogQLTool(r.logQuery, r.log))
