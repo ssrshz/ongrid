@@ -675,6 +675,17 @@ var coordinatorOnlyTools = map[string]bool{
 	"TaskStop":    true,
 }
 
+// alwaysAvailableTools survive persona whitelist filtering for BOTH the
+// coordinator and workers. ToolSearch is the deferred-loading entry
+// point: every agent that runs against a redacted tool bag needs it to
+// fetch schemas on demand, so a persona's Tools whitelist must never
+// strip it. Kept as a string literal (not tools.ToolSearchToolName) to
+// avoid a chatruntime → tools import cycle — same convention as
+// coordinatorOnlyTools above.
+var alwaysAvailableTools = map[string]bool{
+	"ToolSearch": true,
+}
+
 // filterToolsForAgent applies the agent persona's whitelist + blacklist
 // against the runtime tool bag. Black wins :
 //
@@ -723,10 +734,16 @@ func filterToolsForAgentRole(bag []basetool.BaseTool, agentDef *Agent, isCoordin
 		if viewerOnly && info.Class != "read" {
 			continue
 		}
+
 		// Coordinator-only tools survive the strip when we ARE the
 		// coordinator. They're always in scope for the coordinator
 		// regardless of any persona whitelist — control plane.
-		if coordinatorOnlyTools[info.Name] {
+		// Always-available tools (ToolSearch) survive the persona
+		// whitelist for every role — deferred loading is useless without
+		// the entry point that fetches redacted schemas.
+		if alwaysAvailableTools[info.Name] {
+			// keep unconditionally
+		} else if coordinatorOnlyTools[info.Name] {
 			if !isCoordinator {
 				continue
 			}
@@ -860,8 +877,8 @@ func (rt *Runtime) prologueKBLookup(ctx context.Context, bag []basetool.BaseTool
 	// Schema across versions has used both "query" and "q"; send
 	// "query" and let the tool ignore extras.
 	args, _ := json.Marshal(map[string]any{
-		"query":    userText,
-		"top_k":    3,
+		"query":     userText,
+		"top_k":     3,
 		"min_score": 0.6,
 	})
 	out, err := kb.InvokableRun(ctx, string(args))
@@ -925,4 +942,3 @@ func workerChatModelOpts(ctx context.Context) []model.Option {
 	}
 	return opts
 }
-
