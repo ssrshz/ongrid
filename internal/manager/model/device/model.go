@@ -23,7 +23,7 @@ package device
 import (
 	"time"
 
-	"gorm.io/plugin/soft_delete"
+	"gorm.io/gorm"
 )
 
 // Device is a physical or logical host being monitored. Identity is by
@@ -33,7 +33,7 @@ import (
 // renames).
 type Device struct {
 	ID          uint64 `gorm:"primaryKey;autoIncrement"`
-	Fingerprint string `gorm:"size:128;not null;column:fingerprint;uniqueIndex:idx_devices_fingerprint,priority:1"`
+	Fingerprint string `gorm:"size:128;uniqueIndex;not null;column:fingerprint"`
 	// UserID records the owner / who registered the first edge on this
 	// host. nullable to mirror Edge.CreatedBy (audit-only field).
 	UserID *uint64 `gorm:"column:user_id"`
@@ -49,6 +49,12 @@ type Device struct {
 	OSVersion     string `gorm:"size:128;not null;default:'';column:os_version"`
 	Arch          string `gorm:"size:32;not null"`
 	KernelVersion string `gorm:"size:128;not null;column:kernel_version"`
+
+	// IPAddress is the primary IPv4 address reported by the edge agent
+	// on its most recent register_edge handshake. Empty string when the
+	// agent hasn't reported one yet (pre-IP-collection binary) or when
+	// no suitable address was found on the host.
+	IPAddress string `gorm:"size:45;not null;default:'';column:ip_address"`
 
 	// Capacity facts. CPUCount is core count; MemTotalBytes / DiskTotalBytes
 	// are total capacity. liaison-cloud uses int for CPU/Memory/Disk; we
@@ -87,12 +93,11 @@ type Device struct {
 	// should be NOT NULL but we keep it nullable to make the migration
 	// reentrant — a row missing node_id just gets one allocated on the
 	// next migration pass.
-	NodeID *uint64 `gorm:"column:node_id;uniqueIndex:idx_devices_node_id,priority:1"`
+	NodeID *uint64 `gorm:"column:node_id;uniqueIndex:idx_devices_node_id"`
 
-	CreatedAt    time.Time             `gorm:"column:created_at"`
-	UpdatedAt    time.Time             `gorm:"column:updated_at"`
-	DeletedAt    *time.Time            `gorm:"index;column:deleted_at"`
-	DeleteMarker soft_delete.DeletedAt `gorm:"column:delete_marker;not null;default:0;softDelete:milli,DeletedAtField:DeletedAt;uniqueIndex:idx_devices_fingerprint,priority:2;uniqueIndex:idx_devices_node_id,priority:2"`
+	CreatedAt time.Time      `gorm:"column:created_at"`
+	UpdatedAt time.Time      `gorm:"column:updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index;column:deleted_at"`
 }
 
 // TableName pins the table.
@@ -231,14 +236,13 @@ const (
 // single device CAN appear under multiple edges (e.g. one host runs the
 // agent + a second edge scans it as "discovered").
 type EdgeDevice struct {
-	ID           uint64                 `gorm:"primaryKey;autoIncrement"`
-	EdgeID       uint64                 `gorm:"not null;column:edge_id;uniqueIndex:idx_edge_device_unique,priority:1;index:idx_edge_device_edge"`
-	DeviceID     uint64                 `gorm:"not null;column:device_id;uniqueIndex:idx_edge_device_unique,priority:2;index:idx_edge_device_device"`
-	Type         EdgeDeviceRelationType `gorm:"not null;default:1;column:type;uniqueIndex:idx_edge_device_unique,priority:3"`
-	CreatedAt    time.Time              `gorm:"column:created_at"`
-	UpdatedAt    time.Time              `gorm:"column:updated_at"`
-	DeletedAt    *time.Time             `gorm:"index;column:deleted_at"`
-	DeleteMarker soft_delete.DeletedAt  `gorm:"column:delete_marker;not null;default:0;softDelete:milli,DeletedAtField:DeletedAt;uniqueIndex:idx_edge_device_unique,priority:4"`
+	ID        uint64                 `gorm:"primaryKey;autoIncrement"`
+	EdgeID    uint64                 `gorm:"not null;column:edge_id;uniqueIndex:idx_edge_device_unique,priority:1;index:idx_edge_device_edge"`
+	DeviceID  uint64                 `gorm:"not null;column:device_id;uniqueIndex:idx_edge_device_unique,priority:2;index:idx_edge_device_device"`
+	Type      EdgeDeviceRelationType `gorm:"not null;default:1;column:type;uniqueIndex:idx_edge_device_unique,priority:3"`
+	CreatedAt time.Time              `gorm:"column:created_at"`
+	UpdatedAt time.Time              `gorm:"column:updated_at"`
+	DeletedAt gorm.DeletedAt         `gorm:"index;column:deleted_at"`
 }
 
 // TableName pins the table.

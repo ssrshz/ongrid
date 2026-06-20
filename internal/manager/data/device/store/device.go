@@ -36,7 +36,7 @@ func (r *Repo) FindOrCreateByFingerprint(ctx context.Context, seed *model.Device
 		return nil, errs.ErrInvalid
 	}
 	tx := r.db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "fingerprint"}, {Name: "delete_marker"}},
+		Columns:   []clause.Column{{Name: "fingerprint"}},
 		DoNothing: true,
 	}).Create(seed)
 	if tx.Error != nil {
@@ -89,6 +89,7 @@ func (r *Repo) UpdateHostFacts(ctx context.Context, id uint64, f biz.HostFacts) 
 		"cpu_count":        f.CPUCount,
 		"mem_total_bytes":  f.MemTotalBytes,
 		"disk_total_bytes": f.DiskTotalBytes,
+		"ip_address":       f.IPAddress,
 	})
 	if res.Error != nil {
 		return res.Error
